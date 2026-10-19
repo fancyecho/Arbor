@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>zh_CN</string>
+    <key>CFBundleExecutable</key>
+    <string>Arbor</string>
+    <key>CFBundleIdentifier</key>
+    <string>app.arbor.Arbor</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>Arbor</string>
+    <key>CFBundleDisplayName</key>
+    <string>Arbor</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+    <key>ArborReleaseTag</key>
+    <string>v0.1.0-dev.1</string>
+    <key>ArborUpdateRepository</key>
+    <string>fancyecho/Arbor</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>14.0</string>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.productivity</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSPrincipalClass</key>
+    <string>NSApplication</string>
+    <key>NSDesktopFolderUsageDescription</key>
+    <string>Arbor 需要访问桌面以浏览和管理其中的文件。</string>
+    <key>NSDocumentsFolderUsageDescription</key>
+    <string>Arbor 需要访问文稿以浏览和管理其中的文件。</string>
+    <key>NSDownloadsFolderUsageDescription</key>
+    <string>Arbor 需要访问下载以浏览和管理其中的文件。</string>
+    <key>NSRemovableVolumesUsageDescription</key>
+    <string>Arbor 需要访问外接磁盘以浏览和管理其中的文件。</string>
+    <key>NSNetworkVolumesUsageDescription</key>
+    <string>Arbor 需要访问网络磁盘以浏览和管理其中的文件。</string>
+    <key>NSServices</key>
+    <array>
+        <dict>
+            <key>NSMenuItem</key>
+            <dict>
+                <key>default</key>
+                <string>在 Arbor 中打开</string>
+            </dict>
+            <key>NSMessage</key>
+            <string>openInArbor</string>
+            <key>NSPortName</key>
+            <string>Arbor</string>
+            <key>NSRequiredContext</key>
+            <dict/>
+            <key>NSSendFileTypes</key>
+            <array>
+                <string>public.item</string>
+            </array>
+        </dict>
+    </array>
+    <key>CFBundleDocumentTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>Folder</string>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>LSHandlerRank</key>
+            <string>None</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>public.folder</string>
+                <string>public.item</string>
+            </array>
+        </dict>
+    </array>
+    <key>UTExportedTypeDeclarations</key>
+    <array>
+        <dict>
+            <key>UTTypeIdentifier</key>
+            <string>app.arbor.tab</string>
+            <key>UTTypeDescription</key>
+            <string>Arbor 标签页</string>
+            <key>UTTypeConformsTo</key>
+            <array>
+                <string>public.data</string>
+            </array>
+        </dict>
+    </array>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>Arbor 使用 Apple 事件在终端中打开文件夹。</string>
+</dict>
+</plist>
