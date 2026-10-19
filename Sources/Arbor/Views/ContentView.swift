@@ -99,6 +99,20 @@ struct WorkspaceWindow: View {
             case "sync":
                 workspace.showSync = true
                 return
+            case "update", "update-install":
+                // Checks GitHub for real; with ARBOR_FAKE_CURRENT_TAG set lower, the latest release is offered.
+                Updater.shared.check(userInitiated: true)
+                if note.object as? String == "update-install" {
+                    Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { timer in
+                        MainActor.assumeIsolated {
+                            if case .available(let release) = Updater.shared.phase {
+                                timer.invalidate()
+                                Updater.shared.install(release)
+                            }
+                        }
+                    }
+                }
+                return
             case "stress":
                 // Hammers the flows that used to hang/crash: sidebar, inspector, colors, photo selection,
                 // pane counts and window resizing, every 150 ms for ~12 s.

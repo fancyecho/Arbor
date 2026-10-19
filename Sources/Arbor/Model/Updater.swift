@@ -174,11 +174,24 @@ final class Updater {
                 phase = .installing
                 let newApp = try await Task.detached { try Self.unpack(archive) }.value
                 try Self.scheduleReplacement(with: newApp)
-                NSApp.terminate(nil)
+                quitForUpdate()
             } catch {
                 phase = .failed(Self.describe(error))
             }
         }
+    }
+
+    /// AppKit won't terminate while a sheet is attached, so close the update sheet (and any other
+    /// sheets) first, save the session, then quit. If something still holds the app open, exit anyway:
+    /// the replacement script is already waiting for this process to go away.
+    private func quitForUpdate() {
+        showsSheet = false
+        for window in NSApp.windows {
+            for sheet in window.sheets { window.endSheet(sheet) }
+        }
+        WorkspaceRegistry.shared.persist()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { NSApp.terminate(nil) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { exit(0) }
     }
 
     func dismiss() {
