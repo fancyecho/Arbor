@@ -7,6 +7,8 @@ struct Place: Hashable {
     let symbol: String
     var shortcut: Character?
     var isEjectable = false
+    /// Volumes: how full they are (0…1), for the sidebar's capacity bar.
+    var fullness: Double?
 }
 
 enum Places {
@@ -68,11 +70,16 @@ final class VolumeList {
                 MainActor.assumeIsolated { self?.refresh() }
             }
         }
+        // Free space changes all the time; catch up whenever Arbor comes to the front.
+        NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refresh() }
+        }
     }
 
     func refresh() {
         let keys: [URLResourceKey] = [.volumeLocalizedNameKey, .volumeIsEjectableKey, .volumeIsRemovableKey,
-                                      .volumeIsInternalKey, .volumeIsBrowsableKey, .volumeIsLocalKey]
+                                      .volumeIsInternalKey, .volumeIsBrowsableKey, .volumeIsLocalKey,
+                                      .volumeTotalCapacityKey, .volumeAvailableCapacityForImportantUsageKey]
         let urls = FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: keys, options: [.skipHiddenVolumes]) ?? []
         volumes = urls.compactMap { url in
             let values = try? url.resourceValues(forKeys: Set(keys))
@@ -81,7 +88,12 @@ final class VolumeList {
             let ejectable = (values?.volumeIsEjectable ?? false) || (values?.volumeIsRemovable ?? false) || isNetwork
             let isInternal = values?.volumeIsInternal ?? true
             let symbol = isNetwork ? "server.rack" : url.path == "/" ? "internaldrive" : (ejectable ? "externaldrive" : (isInternal ? "internaldrive" : "externaldrive.connected.to.line.below"))
-            return Place(name: values?.volumeLocalizedName ?? url.lastPathComponent, url: url, symbol: symbol, isEjectable: ejectable)
+            var fullness: Double?
+            if let total = values?.volumeTotalCapacity, total > 0, let free = values?.volumeAvailableCapacityForImportantUsage {
+                fullness = min(max(1 - Double(free) / Double(total), 0), 1)
+            }
+            return Place(name: values?.volumeLocalizedName ?? url.lastPathComponent, url: url, symbol: symbol,
+                         isEjectable: ejectable, fullness: fullness)
         }
     }
 

@@ -91,3 +91,22 @@ final class SessionTests: XCTestCase {
         _ = tab
     }
 }
+
+@MainActor
+final class RenameConflictTests: XCTestCase {
+    func testFailedRenameKeepsTheNameAndResumesNaming() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("ArborRename-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir.appendingPathComponent("taken"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: dir.appendingPathComponent("未命名文件夹"), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let workspace = WorkspaceState()
+        let tab = workspace.activeTab
+        let folder = dir.appendingPathComponent("未命名文件夹")
+        XCTAssertFalse(workspace.commitRename(folder, to: "taken", in: tab), "the name is in use")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: folder.path), "nothing was renamed")
+        XCTAssertNotNil(workspace.alertMessage)
+        XCTAssertTrue(workspace.renameAfterAlert?.url == folder, "naming picks up again after the alert")
+        XCTAssertTrue(workspace.commitRename(folder, to: "free", in: tab))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: dir.appendingPathComponent("free").path))
+    }
+}

@@ -99,3 +99,139 @@ struct WorkspaceBackdrop: View {
         .animation(.easeInOut(duration: 0.45), value: tint)
     }
 }
+
+// MARK: - Controls in the glass style
+
+/// Capsule tabs: a faint glass track, and a soft wash of the workspace color that slides under the
+/// chosen option — the same language as sidebar selection, instead of the system's solid accent fill.
+struct GlassSegmented<Value: Hashable>: View {
+    struct Option {
+        let value: Value
+        let title: String
+        var symbol: String?
+    }
+
+    @Binding var selection: Value
+    let options: [Option]
+    var compact = false
+
+    @Environment(\.arborTint) private var tint
+    @Environment(\.colorScheme) private var colorScheme
+    @Namespace private var namespace
+    @State private var hovered: Value?
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(options, id: \.value) { option in
+                let selected = option.value == selection
+                Button {
+                    withAnimation(.snappy(duration: 0.28)) { selection = option.value }
+                } label: {
+                    HStack(spacing: 4) {
+                        if let symbol = option.symbol { Image(systemName: symbol).font(.system(size: compact ? 10 : 11)) }
+                        Text(option.title)
+                    }
+                    .font(.system(size: compact ? 11 : 12, weight: selected ? .semibold : .regular))
+                    .foregroundStyle(selected ? AnyShapeStyle(Color.primary) : AnyShapeStyle(Color.secondary))
+                    .padding(.horizontal, compact ? 10 : 13)
+                    .frame(height: compact ? 22 : 26)
+                    .background {
+                        if selected {
+                            Capsule()
+                                .fill(tint.opacity(colorScheme == .dark ? 0.3 : 0.17))
+                                .overlay(Capsule().strokeBorder(tint.opacity(colorScheme == .dark ? 0.45 : 0.28), lineWidth: 0.75))
+                                .matchedGeometryEffect(id: "selection", in: namespace)
+                        } else if hovered == option.value {
+                            Capsule().fill(Color.primary.opacity(0.05))
+                        }
+                    }
+                    .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .onHover { inside in hovered = inside ? option.value : (hovered == option.value ? nil : hovered) }
+            }
+        }
+        .padding(2)
+        .background(Capsule().fill(Color.primary.opacity(colorScheme == .dark ? 0.06 : 0.045)))
+        .overlay(Capsule().strokeBorder(Glass.hairline))
+        .fixedSize()
+    }
+}
+
+/// Glass capsule buttons. `.prominent` is the one main action: the workspace color, softly lit.
+struct GlassButtonStyle: ButtonStyle {
+    enum Kind { case regular, prominent }
+    var kind: Kind = .regular
+    var compact = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        GlassButtonBody(configuration: configuration, kind: kind, compact: compact)
+    }
+
+    private struct GlassButtonBody: View {
+        let configuration: Configuration
+        let kind: Kind
+        let compact: Bool
+        @Environment(\.arborTint) private var tint
+        @Environment(\.isEnabled) private var isEnabled
+        @State private var hovering = false
+
+        var body: some View {
+            let prominent = kind == .prominent
+            configuration.label
+                .labelStyle(.titleAndIcon)
+                .font(.system(size: compact ? 11.5 : 13, weight: .medium))
+                .foregroundStyle(prominent ? AnyShapeStyle(Color.white) : AnyShapeStyle(Color.primary))
+                .padding(.horizontal, compact ? 10 : 18)
+                .frame(height: compact ? 24 : 32)
+                .background {
+                    if prominent {
+                        Capsule().fill(tint.gradient).brightness(hovering ? 0.06 : 0)
+                    } else {
+                        Capsule().fill(Color.primary.opacity(hovering ? 0.1 : 0.06))
+                    }
+                }
+                .overlay(Capsule().strokeBorder(prominent ? Color.white.opacity(0.22) : Glass.hairline, lineWidth: 0.75))
+                .shadow(color: prominent ? tint.opacity(0.35) : .clear, radius: 10, y: 4)
+                .contentShape(Capsule())
+                .scaleEffect(configuration.isPressed ? 0.97 : 1)
+                .opacity(isEnabled ? (configuration.isPressed ? 0.85 : 1) : 0.45)
+                .animation(.easeOut(duration: 0.12), value: hovering)
+                .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
+                .onHover { hovering = $0 }
+        }
+    }
+}
+
+/// Text links in the workspace color (the system's link style is always blue).
+struct TintLinkStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        TintLinkBody(configuration: configuration)
+    }
+
+    private struct TintLinkBody: View {
+        let configuration: Configuration
+        @Environment(\.arborTint) private var tint
+        @State private var hovering = false
+
+        var body: some View {
+            configuration.label
+                .foregroundStyle(tint)
+                .underline(hovering)
+                .opacity(configuration.isPressed ? 0.7 : 1)
+                .contentShape(Rectangle())
+                .onHover { hovering = $0 }
+        }
+    }
+}
+
+extension ButtonStyle where Self == GlassButtonStyle {
+    static var glass: GlassButtonStyle { GlassButtonStyle() }
+    static var glassCompact: GlassButtonStyle { GlassButtonStyle(compact: true) }
+    static var glassProminent: GlassButtonStyle { GlassButtonStyle(kind: .prominent) }
+    static var glassProminentCompact: GlassButtonStyle { GlassButtonStyle(kind: .prominent, compact: true) }
+}
+
+extension ButtonStyle where Self == TintLinkStyle {
+    static var tintLink: TintLinkStyle { TintLinkStyle() }
+}

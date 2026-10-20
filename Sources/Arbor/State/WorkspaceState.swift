@@ -22,6 +22,8 @@ final class WorkspaceState {
     /// Present the batch rename sheet for these files.
     var batchRenameTargets: [URL]?
     var alertMessage: String?
+    /// A rename that failed: naming starts again on this item when the alert closes.
+    @ObservationIgnored var renameAfterAlert: (tab: TabState, url: URL)?
     /// ⌘K command palette.
     var showPalette = false
     var showSelectByCondition = false

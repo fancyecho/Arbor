@@ -41,7 +41,7 @@ private struct OperationsList: View {
                 Spacer()
                 if queue.tasks.contains(where: { $0.state != .running }) {
                     Button("清除已完成") { queue.clearFinished() }
-                        .buttonStyle(.link)
+                        .buttonStyle(.tintLink)
                         .font(.caption)
                 }
             }

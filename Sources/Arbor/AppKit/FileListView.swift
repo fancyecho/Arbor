@@ -23,6 +23,10 @@ struct FileListView: NSViewRepresentable {
     let showsInsights: Bool
     let isActive: Bool
     let focusToken: Int
+    /// While the window layout animates: the width this list is heading for (columns are chosen for it).
+    var plannedWidth: CGFloat?
+    /// Changes when a space scan finishes or updates, so scanned folder sizes show up in the size column.
+    var spaceRevision = 0
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -149,6 +153,9 @@ struct FileListView: NSViewRepresentable {
         private var insights = true
         /// Largest file in the folder; size bars are relative to it.
         private var maxSize: Int64 = 1
+        private var spaceRevision = -1
+        /// Scanned sizes of this folder's subfolders, by name (empty when unscanned or showing search results).
+        private var folderSizes: [String: Int64] = [:]
         private var tabID: UUID?
         private var isSyncing = false
         /// Table callbacks fired while it is being set up (e.g. restoring autosaved columns) are ignored.
@@ -170,8 +177,10 @@ struct FileListView: NSViewRepresentable {
             // The scroll view decides what actually fits; we only say what the user wants.
             var desired: Set<String> = Set(view.visibleColumns)
             if view.showsLocation { desired.insert(Column.location.rawValue) }
-            if let scroll = table.enclosingScrollView as? FileScrollView, scroll.desiredColumns != desired {
+            if let scroll = table.enclosingScrollView as? FileScrollView,
+               scroll.desiredColumns != desired || scroll.plannedWidth != view.plannedWidth {
                 scroll.desiredColumns = desired
+                scroll.plannedWidth = view.plannedWidth
                 scroll.fitColumns()
             }
 
@@ -184,11 +193,14 @@ struct FileListView: NSViewRepresentable {
                     (rowView as? TintedRowView)?.tint = view.tint
                 }
             }
-            if tabChanged || items != view.items || marks != view.compareMarks || insights != view.showsInsights {
+            if tabChanged || items != view.items || marks != view.compareMarks || insights != view.showsInsights
+                || spaceRevision != view.spaceRevision {
                 items = view.items
                 marks = view.compareMarks
                 insights = view.showsInsights
-                maxSize = max(1, view.items.filter { !$0.isNavigable }.compactMap(\.size).max() ?? 1)
+                spaceRevision = view.spaceRevision
+                folderSizes = view.showsLocation ? [:] : SpaceIndex.shared.childSizes(of: view.tab.url) ?? [:]
+                maxSize = max(1, view.items.compactMap { $0.isNavigable ? folderSizes[$0.name] : $0.size }.max() ?? 1)
                 tabID = view.tab.id
                 table.reloadData()
                 // Switching tabs returns to where that tab was scrolled.
@@ -205,7 +217,7 @@ struct FileListView: NSViewRepresentable {
                 table.sortDescriptors = [descriptor]
             }
 
-            if let renaming = view.renamingURL, editingURL != renaming {
+            if let renaming = view.renamingURL, !(editingURL?.isSameFile(as: renaming) ?? false) {
                 DispatchQueue.main.async { [weak self] in self?.beginRename(renaming) }
             }
 
@@ -290,8 +302,9 @@ struct FileListView: NSViewRepresentable {
             let cell = (tableView.makeView(withIdentifier: tableColumn.identifier, owner: nil) as? FileCellView)
                 ?? FileCellView(column: column)
             cell.identifier = tableColumn.identifier
+            let folderSize = item.isNavigable && column == .size ? folderSizes[item.name] : nil
             cell.configure(item: item, column: column, mark: marks[item.name],
-                           insight: insights ? CellInsight(maxSize: maxSize, tint: tint) : nil)
+                           insight: insights ? CellInsight(maxSize: maxSize, tint: tint) : nil, folderSize: folderSize)
             if column == .name { cell.textField?.delegate = self }
             return cell
         }
@@ -354,7 +367,7 @@ struct FileListView: NSViewRepresentable {
         // MARK: Inline rename
 
         private func beginRename(_ url: URL) {
-            guard let table, let row = items.firstIndex(where: { $0.url == url }),
+            guard let table, let row = items.firstIndex(where: { $0.url.isSameFile(as: url) }),
                   let cell = table.view(atColumn: 0, row: row, makeIfNecessary: true) as? FileCellView,
                   let field = cell.textField else { return }
             editingURL = url
@@ -362,6 +375,7 @@ struct FileListView: NSViewRepresentable {
             table.scrollRowToVisible(row)
             field.isEditable = true
             field.isSelectable = true
+            Self.styleEditing(field, tint: tint)
             table.window?.makeFirstResponder(field)
             // Select the base name only, like Finder.
             if let editor = field.currentEditor() {
@@ -382,17 +396,38 @@ struct FileListView: NSViewRepresentable {
             return false
         }
 
+        /// The name field while renaming: a rounded field with a workspace-colored rim, not the system's
+        /// black box and blue focus ring. `tint` nil puts the label back.
+        static func styleEditing(_ field: NSTextField, tint: NSColor?) {
+            field.wantsLayer = true
+            if let tint {
+                field.focusRingType = .none
+                field.drawsBackground = true
+                field.backgroundColor = NSColor(name: nil) { appearance in
+                    appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(white: 0.17, alpha: 1) : .white
+                }
+                field.layer?.cornerRadius = 5
+                field.layer?.borderWidth = 1.5
+                field.layer?.borderColor = tint.cgColor
+            } else {
+                field.drawsBackground = false
+                field.layer?.borderWidth = 0
+            }
+        }
+
         func controlTextDidEndEditing(_ notification: Notification) {
             guard let field = notification.object as? NSTextField, let url = editingURL else { return }
             editingURL = nil
             field.isEditable = false
             field.isSelectable = false
+            Self.styleEditing(field, tint: nil)
             let newName = field.stringValue
             if renameCancelled || newName.isEmpty {
                 field.stringValue = url.lastPathComponent
                 tab.renamingURL = nil
-            } else {
-                workspace.commitRename(url, to: newName, in: tab)
+            } else if !workspace.commitRename(url, to: newName, in: tab) {
+                // The rename didn't happen (name taken…): show the real name again, not the one typed.
+                field.stringValue = url.lastPathComponent
             }
             if table?.window?.firstResponder == nil || table?.window?.firstResponder === table?.window {
                 table?.window?.makeFirstResponder(table)
@@ -545,6 +580,41 @@ final class LayoutFirewall: NSView {
 final class FileScrollView: NSScrollView {
     /// Columns the user wants (raw values). Narrow panes drop the least important ones that don't fit.
     var desiredColumns: Set<String> = []
+    /// Set while the window layout animates: the width the list is heading for. Columns that won't fit
+    /// there shrink away smoothly as the pane narrows (and new ones grow in as it widens), so the date
+    /// column glides with the edge instead of jumping when a column comes or goes.
+    var plannedWidth: CGFloat? {
+        didSet {
+            guard plannedWidth != oldValue, let table = documentView as? NSTableView else { return }
+            let others = table.tableColumns.filter { $0.identifier.rawValue != FileListView.Column.name.rawValue }
+            if plannedWidth != nil {
+                let natural = transition?.natural
+                    ?? Dictionary(uniqueKeysWithValues: others.map { ($0.identifier.rawValue, $0.width) })
+                transition = ColumnTransition(
+                    startWidth: contentView.bounds.width.rounded(.down),
+                    shown: Set(others.filter { !$0.isHidden && $0.width >= 1 }.map(\.identifier.rawValue)),
+                    natural: natural)
+            } else if let transition {
+                for column in others {
+                    let id = column.identifier.rawValue
+                    column.minWidth = FileListView.Column(rawValue: id)?.minWidth ?? 50
+                    if let width = transition.natural[id] { column.width = width }
+                }
+                self.transition = nil
+            }
+            lastFit = nil
+        }
+    }
+
+    struct ColumnTransition {
+        var startWidth: CGFloat
+        /// Optional columns visible when the transition began.
+        var shown: Set<String>
+        /// Their widths before the transition squeezed any of them.
+        var natural: [String: CGFloat]
+    }
+
+    private var transition: ColumnTransition?
 
     /// Dropped first when space runs out; the name column always stays.
     private static let dropOrder = ["tags", "ext", "created", "kind", "location", "size", "modified"]
@@ -552,7 +622,7 @@ final class FileScrollView: NSScrollView {
     /// Row insets of the `.inset` table style plus a little air, so rows never reach the card edge.
     private static let horizontalChrome: CGFloat = 34
 
-    private var lastFit: (width: CGFloat, columns: Set<String>)?
+    private var lastFit: (width: CGFloat, planned: CGFloat?, columns: Set<String>)?
     private var isFitting = false
 
     override func tile() {
@@ -560,7 +630,36 @@ final class FileScrollView: NSScrollView {
         fitColumns()
     }
 
-    /// Decides which columns fit and how wide the name column is. It's a pure function of the visible
+    /// The optional columns that fit in `width` next to a comfortable name column. Columns in
+    /// `autoHidden` need 30pt more to come back (hysteresis), so a width hovering at a threshold
+    /// can't flip one every frame.
+    static func fittingColumns(desired: Set<String>, widths: [String: CGFloat], autoHidden: Set<String>,
+                               width: CGFloat, spacing: CGFloat) -> Set<String> {
+        var shown = desired
+        func spare() -> CGFloat {
+            let used = shown.reduce(0) { $0 + (widths[$1] ?? 0) }
+            return width - used - spacing * CGFloat(shown.count + 1) - horizontalChrome
+        }
+        for column in dropOrder where shown.contains(column) {
+            let needed = comfortableNameWidth + (autoHidden.contains(column) ? 30 : 0)
+            if spare() < needed { shown.remove(column) }
+        }
+        return shown
+    }
+
+    /// Width of each optional column `progress` of the way through a transition (nil = hidden).
+    static func blendedWidth(full: CGFloat, inStart: Bool, inTarget: Bool, progress: CGFloat) -> CGFloat? {
+        let width: CGFloat
+        switch (inStart, inTarget) {
+        case (true, true): width = full
+        case (true, false): width = full * (1 - progress)
+        case (false, true): width = full * progress
+        case (false, false): return nil
+        }
+        return width >= 1 ? width : nil
+    }
+
+    /// Decides which columns show and how wide the name column is. It's a pure function of the visible
     /// width and the wanted columns, runs once per change and never re-enters, so changing a column
     /// can't start another layout pass that changes it back (that loop used to hang and crash the app).
     func fitColumns() {
@@ -568,31 +667,48 @@ final class FileScrollView: NSScrollView {
               let name = table.tableColumns.first(where: { $0.identifier.rawValue == FileListView.Column.name.rawValue })
         else { return }
         let width = contentView.bounds.width.rounded(.down)
-        if let lastFit, lastFit.width == width, lastFit.columns == desiredColumns { return }
+        // The clip view is narrower than the list by the scroller (if any); keep that offset for the plan.
+        let planned = plannedWidth.map { ($0 - (bounds.width - width)).rounded(.down) }
+        if let lastFit, lastFit.width == width, lastFit.planned == planned, lastFit.columns == desiredColumns { return }
         isFitting = true
         defer { isFitting = false }
-        lastFit = (width, desiredColumns)
+        lastFit = (width, planned, desiredColumns)
 
-        var shown = desiredColumns
-        func spare() -> CGFloat {
-            let others = table.tableColumns.filter { $0 !== name && shown.contains($0.identifier.rawValue) }
-            let spacing = table.intercellSpacing.width * CGFloat(others.count + 1) + Self.horizontalChrome
-            return width - others.reduce(0) { $0 + $1.width } - spacing
+        let others = table.tableColumns.filter { $0 !== name }
+        let spacing = table.intercellSpacing.width
+        if let planned, let transition {
+            let target = Self.fittingColumns(
+                desired: desiredColumns, widths: transition.natural,
+                autoHidden: desiredColumns.subtracting(transition.shown), width: planned, spacing: spacing)
+            let span = planned - transition.startWidth
+            let progress = abs(span) < 1 ? 1 : min(max((width - transition.startWidth) / span, 0), 1)
+            for column in others {
+                let id = column.identifier.rawValue
+                let blended = Self.blendedWidth(full: transition.natural[id] ?? column.width,
+                                                inStart: transition.shown.contains(id) && desiredColumns.contains(id),
+                                                inTarget: target.contains(id), progress: progress)
+                if let blended {
+                    column.minWidth = 0
+                    if abs(column.width - blended) >= 0.5 { column.width = blended }
+                    if column.isHidden { column.isHidden = false }
+                } else if !column.isHidden {
+                    column.isHidden = true
+                }
+            }
+        } else {
+            let widths = Dictionary(uniqueKeysWithValues: others.map { ($0.identifier.rawValue, $0.width) })
+            let autoHidden = Set(others.filter(\.isHidden).map(\.identifier.rawValue)).intersection(desiredColumns)
+            let shown = Self.fittingColumns(desired: desiredColumns, widths: widths, autoHidden: autoHidden,
+                                            width: width, spacing: spacing)
+            for column in others {
+                let hidden = !shown.contains(column.identifier.rawValue)
+                if column.isHidden != hidden { column.isHidden = hidden }
+            }
         }
-        // Hysteresis: a column that is currently auto-hidden only comes back with 30pt to spare, so a
-        // width hovering at the threshold (e.g. while dragging a gutter) can't flip it every frame.
-        let autoHidden = Set(table.tableColumns.filter { $0.isHidden && desiredColumns.contains($0.identifier.rawValue) }
-            .map(\.identifier.rawValue))
-        for column in Self.dropOrder where shown.contains(column) {
-            let needed = Self.comfortableNameWidth + (autoHidden.contains(column) ? 30 : 0)
-            if spare() < needed { shown.remove(column) }
-        }
-        for column in table.tableColumns where column !== name {
-            let hidden = !shown.contains(column.identifier.rawValue)
-            if column.isHidden != hidden { column.isHidden = hidden }
-        }
-        let target = max(name.minWidth, spare().rounded(.down))
-        if abs(name.width - target) >= 1 { name.width = target }
+        let visible = others.filter { !$0.isHidden }
+        let remaining = width - visible.reduce(0) { $0 + $1.width } - spacing * CGFloat(visible.count + 1) - Self.horizontalChrome
+        let nameWidth = max(name.minWidth, remaining.rounded(.down))
+        if abs(name.width - nameWidth) >= 1 { name.width = nameWidth }
     }
 }
 
@@ -746,10 +862,13 @@ final class FileCellView: NSTableCellView {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    func configure(item: FileItem, column: FileListView.Column, mark: CompareStatus? = nil, insight: CellInsight? = nil) {
+    /// `folderSize` comes from a space scan (folders have no size of their own on disk).
+    func configure(item: FileItem, column: FileListView.Column, mark: CompareStatus? = nil, insight: CellInsight? = nil,
+                   folderSize: Int64? = nil) {
         if let sizeBar {
-            let fraction = item.isNavigable ? 0 : Double(item.size ?? 0) / Double(insight?.maxSize ?? 1)
-            sizeBar.isHidden = insight == nil || item.isNavigable
+            let size = item.isNavigable ? folderSize : item.size
+            let fraction = Double(size ?? 0) / Double(insight?.maxSize ?? 1)
+            sizeBar.isHidden = insight == nil || size == nil
             sizeBar.update(fraction: fraction, tint: insight?.tint ?? .controlAccentColor)
         }
         if let freshDot {
@@ -772,7 +891,13 @@ final class FileCellView: NSTableCellView {
         case .modified:
             label.stringValue = Format.date(item.modified)
         case .size:
-            label.stringValue = item.isNavigable ? "--" : Format.bytes(item.size)
+            if item.isNavigable {
+                label.stringValue = folderSize.map(Format.bytes) ?? "--"
+                toolTip = folderSize == nil ? nil : "文件夹大小（来自空间视图的扫描）"
+            } else {
+                label.stringValue = Format.bytes(item.size)
+                toolTip = nil
+            }
         case .kind:
             label.stringValue = item.localizedKind
         case .location:

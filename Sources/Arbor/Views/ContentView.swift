@@ -46,34 +46,9 @@ struct WorkspaceWindow: View {
     }
 
     private var window: some View {
-        // Everything floats on one tinted, blurred backdrop: sidebar, panes and inspector are glass cards.
-        HStack(spacing: 0) {
-            if workspace.showSidebar {
-                SidebarView(workspace: workspace)
-                    .scrollContentBackground(.hidden)
-                    .frame(width: 220)
-                    .background(Glass.card(active: false), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Glass.hairline))
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .padding([.leading, .bottom], 10)
-                    .transition(.move(edge: .leading).combined(with: .opacity))
-            }
-            PanesView(workspace: workspace)
-                // Panes take their new width in one step when the sidebar or inspector toggles: animating it
-                // made the file list re-fit its columns every frame, so dates flickered in and out.
-                .transaction(value: workspace.showInspector) { $0.animation = nil }
-                .transaction(value: workspace.showSidebar) { $0.animation = nil }
-            if workspace.showInspector {
-                InspectorView(workspace: workspace)
-                    .frame(width: inspectorWidth)
-                    .background(Glass.card(active: true), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Glass.hairline))
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .shadow(color: .black.opacity(0.08), radius: 8, y: 3)
-                    .padding([.trailing, .bottom], 10)
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
-            }
-        }
+        // Everything floats on one tinted, blurred backdrop: sidebar, panes and inspector are glass cards,
+        // laid out (and animated) by the deck.
+        DeckView(workspace: workspace, inspectorWidth: inspectorWidth)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { windowWidth = $0 }
         // Never narrower than what's switched on needs; switching more on widens the window.
         .frame(minWidth: minimumWidth)
@@ -81,8 +56,6 @@ struct WorkspaceWindow: View {
         .background { WorkspaceBackdrop(tint: workspace.tint.color) }
         .background { WindowFrameKeeper(minimumWidth: minimumWidth).frame(width: 0, height: 0) }
         .modifier(TransparentToolbar())
-        .animation(.snappy(duration: 0.3), value: workspace.showSidebar)
-        .animation(.snappy(duration: 0.3), value: workspace.showInspector)
         .navigationTitle(workspace.activeTab.title)
         .toolbar(id: "arbor.main") {
             toolbar
@@ -193,9 +166,55 @@ struct WorkspaceWindow: View {
                     { print("STEP inspector off"); workspace.showInspector = false },
                     { print("STEP panes 3"); workspace.setPaneCount(3) },
                     { print("STEP panes 2"); workspace.setPaneCount(2) },
+                    { print("STEP sidebar off"); workspace.showSidebar = false },
+                    { print("STEP sidebar on"); workspace.showSidebar = true },
                 ]
                 for (index, step) in steps.enumerated() {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1 + Double(index) * 1.2, execute: step)
+                }
+                return
+            case "space":
+                // Space view of ARBOR_DEMO_DIR (or home) in the first pane, list of the same folder beside it.
+                let folder = ProcessInfo.processInfo.environment["ARBOR_DEMO_DIR"].map { URL(fileURLWithPath: $0) }
+                    ?? fm.homeDirectoryForCurrentUser
+                workspace.visiblePanes[0].activeTab.navigate(to: folder)
+                workspace.visiblePanes[0].activeTab.viewMode = .space
+                if workspace.visiblePanes.count > 1 { workspace.visiblePanes[1].activeTab.navigate(to: folder) }
+                if let panes = ProcessInfo.processInfo.environment["ARBOR_PANES"].flatMap(Int.init) { workspace.setPaneCount(panes) }
+                if ProcessInfo.processInfo.environment["ARBOR_SPACE_TYPES"] != nil { AppSettings.shared.spaceColoring = .types }
+                if ProcessInfo.processInfo.environment["ARBOR_SPACE_SCAN_NOW"] != nil { SpaceIndex.shared.startScan(folder) }
+                if ProcessInfo.processInfo.environment["ARBOR_COMPACT_SIDEBAR"] != nil {
+                    for section in ["favorites", "tags", "workspaces"] { SidebarStore.shared.setExpanded(section, false) }
+                }
+                if ProcessInfo.processInfo.environment["ARBOR_SORT_SIZE"] != nil, workspace.visiblePanes.count > 1 {
+                    workspace.visiblePanes[1].activeTab.sort.key = .size
+                    workspace.visiblePanes[1].activeTab.sort.ascending = false
+                }
+                if let child = ProcessInfo.processInfo.environment["ARBOR_SPACE_DRILL"] {
+                    // Zoom into a child after the scan, then back out, for checking the transition.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                        workspace.visiblePanes[0].activeTab.navigate(to: folder.appendingPathComponent(child))
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 4.5) { workspace.visiblePanes[0].activeTab.goBack() }
+                }
+                return
+            case "newfolder":
+                // New folder in ARBOR_DEMO_DIR, the way the context menu does it, for checking inline naming.
+                guard let path = ProcessInfo.processInfo.environment["ARBOR_DEMO_DIR"] else { return }
+                workspace.visiblePanes[0].activeTab.navigate(to: URL(fileURLWithPath: path))
+                workspace.activate(workspace.visiblePanes[0])
+                if ProcessInfo.processInfo.environment["ARBOR_MENU"] != nil {
+                    // Through the real context menu: build it as a right-click on empty space does, then pick the item.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                        let menu = NSMenu()
+                        ContextMenuBuilder.build(into: menu, workspace: workspace, tab: workspace.activeTab, selected: [])
+                        if let index = menu.items.firstIndex(where: { $0.title == "新建文件夹" }) { menu.performActionForItem(at: index) }
+                    }
+                    return
+                }
+                guard ProcessInfo.processInfo.environment["ARBOR_MANUAL"] == nil else { return }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                    if ProcessInfo.processInfo.environment["ARBOR_NEW_FILE"] != nil { workspace.newFile() } else { workspace.newFolder() }
                 }
                 return
             case "narrow":
@@ -256,7 +275,13 @@ struct WorkspaceWindow: View {
             workspace.showInspector = true
         }
         .alert("无法完成操作", isPresented: alertBinding) {
-            Button("好") { workspace.alertMessage = nil }
+            Button("好") {
+                workspace.alertMessage = nil
+                if let pending = workspace.renameAfterAlert {
+                    workspace.renameAfterAlert = nil
+                    DispatchQueue.main.async { pending.tab.renamingURL = pending.url }
+                }
+            }
         } message: {
             Text(workspace.alertMessage ?? "")
         }
@@ -308,7 +333,7 @@ struct WorkspaceWindow: View {
             }
             .pickerStyle(.segmented)
             .labelStyle(.iconOnly)
-            .help("视图 (⌘1 / ⌘2 / ⌘3)")
+            .help("视图 (⌘1 / ⌘2 / ⌘3 / ⌘4)")
         }
 
         ToolbarItem(id: "operations", placement: .primaryAction) { OperationsButton() }
@@ -425,172 +450,6 @@ struct WorkspaceWindow: View {
 
     private var alertBinding: Binding<Bool> {
         Binding(get: { workspace.alertMessage != nil }, set: { if !$0 { workspace.alertMessage = nil } })
-    }
-}
-
-/// Side-by-side floating pane cards. The gap between two cards is a handle for resizing them.
-struct PanesView: View {
-    let workspace: WorkspaceState
-
-    static let gap: CGFloat = 10
-    static let minimumWidth: CGFloat = 240
-
-    /// Fractions when the current drag began; widths are always computed from these, never incrementally.
-    @State private var dragStart: [CGFloat]?
-
-    var body: some View {
-        GeometryReader { geometry in
-            let panes = workspace.visiblePanes
-            let available = geometry.size.width - Self.gap * CGFloat(panes.count + 1)
-            let widths = Self.widths(Array(workspace.paneFractions.prefix(panes.count)), available: available,
-                                     minimum: Self.minimumWidth)
-            HStack(spacing: 0) {
-                ForEach(Array(panes.enumerated()), id: \.element.id) { index, pane in
-                    if index > 0 {
-                        PaneGutter(width: Self.gap) { translation in
-                            resize(index - 1, translation: translation, available: available)
-                        } onEnd: {
-                            dragStart = nil
-                        } onReset: {
-                            workspace.paneFractions = [1, 1, 1]
-                        }
-                    }
-                    PaneView(workspace: workspace, pane: pane)
-                        .frame(width: widths[index])
-                }
-            }
-            .padding(.horizontal, Self.gap)
-            .padding(.bottom, Self.gap)
-            .frame(width: geometry.size.width, height: geometry.size.height, alignment: .leading)
-        }
-    }
-
-    /// Sets pane `index` and the next one from the drag's total translation (in window coordinates),
-    /// clamped so both stay at least `minimumWidth` wide. Same input → same output: no jitter.
-    private func resize(_ index: Int, translation: CGFloat, available: CGFloat) {
-        let start = dragStart ?? workspace.paneFractions
-        if dragStart == nil { dragStart = start }
-        let count = workspace.visiblePanes.count
-        guard let fractions = Self.resized(start, divider: index, translation: translation, available: available,
-                                           count: count, minimumWidth: Self.effectiveMinimum(available, count: count)),
-              fractions != workspace.paneFractions else { return }
-        workspace.paneFractions = fractions
-    }
-
-    /// Pane widths always add up to exactly `available`: panes are never pushed under the inspector
-    /// or out of the window. Each keeps `minimum` while there is room, and they share equally when not.
-    static func widths(_ fractions: [CGFloat], available: CGFloat, minimum: CGFloat) -> [CGFloat] {
-        let count = fractions.count
-        guard count > 0 else { return [] }
-        let space = max(available, 0)
-        let floor = min(minimum, space / CGFloat(count))
-        var weights = fractions.map { max($0, 0.0001) }
-        var fixed = [Bool](repeating: false, count: count)
-        var result = [CGFloat](repeating: floor, count: count)
-        // Water-filling: panes that would fall below the floor are pinned to it, the rest share what's left.
-        while true {
-            let free = (0..<count).filter { !fixed[$0] }
-            guard !free.isEmpty else { break }
-            let remaining = space - floor * CGFloat(count - free.count)
-            let weight = free.reduce(0) { $0 + weights[$1] }
-            var pinned = false
-            for index in free {
-                result[index] = remaining * weights[index] / weight
-                if result[index] < floor {
-                    fixed[index] = true
-                    result[index] = floor
-                    weights[index] = 0
-                    pinned = true
-                }
-            }
-            if !pinned { break }
-        }
-        return result
-    }
-
-    /// The preferred minimum, or an equal share when the panes can't all have it.
-    static func effectiveMinimum(_ available: CGFloat, count: Int) -> CGFloat {
-        min(minimumWidth, max(available, 0) / CGFloat(max(count, 1)))
-    }
-
-    /// Room the panes need for each to get the preferred minimum (cards plus the gaps around them).
-    static func preferredWidth(count: Int) -> CGFloat {
-        minimumWidth * CGFloat(count) + gap * CGFloat(count + 1)
-    }
-
-    static func resized(_ start: [CGFloat], divider index: Int, translation: CGFloat, available: CGFloat,
-                        count: Int, minimumWidth: CGFloat) -> [CGFloat]? {
-        guard start.indices.contains(index + 1) else { return nil }
-        let total = start.prefix(count).reduce(0, +)
-        let perPoint = total / max(available, 1)
-        let pair = start[index] + start[index + 1]
-        let minimum = minimumWidth * perPoint
-        guard pair > minimum * 2 else { return nil }
-        let left = min(max(start[index] + translation * perPoint, minimum), pair - minimum)
-        var fractions = start
-        fractions[index] = left
-        fractions[index + 1] = pair - left
-        return fractions
-    }
-}
-
-/// The transparent gap between two pane cards: drag to resize, double-click to make them equal.
-private struct PaneGutter: View {
-    let width: CGFloat
-    let onDrag: (CGFloat) -> Void
-    let onEnd: () -> Void
-    let onReset: () -> Void
-
-    @State private var hovering = false
-    @State private var dragging = false
-    @State private var cursorPushed = false
-
-    var body: some View {
-        Rectangle()
-            .fill(Color.clear)
-            .frame(width: width)
-            .overlay {
-                Capsule()
-                    .fill(Color.primary.opacity(dragging ? 0.35 : (hovering ? 0.22 : 0)))
-                    .frame(width: 3, height: 36)
-            }
-            .contentShape(Rectangle())
-            .onHover { inside in
-                hovering = inside
-                updateCursor()
-            }
-            // Global coordinates: the gutter moves while it is dragged, so local ones would feed back.
-            .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .global)
-                .onChanged { value in
-                    if !dragging {
-                        dragging = true
-                        updateCursor()
-                    }
-                    onDrag(value.translation.width)
-                }
-                .onEnded { _ in
-                    dragging = false
-                    onEnd()
-                    updateCursor()
-                })
-            .onTapGesture(count: 2, perform: onReset)
-            .onDisappear {
-                if cursorPushed { NSCursor.pop() }
-                cursorPushed = false
-            }
-            .help("拖动调整宽度，双击恢复等宽")
-    }
-
-    /// Exactly one push per pop, however often hover flips while the gutter slides under the pointer.
-    private func updateCursor() {
-        let want = hovering || dragging
-        if want, !cursorPushed {
-            NSCursor.resizeLeftRight.push()
-            cursorPushed = true
-        } else if !want, cursorPushed {
-            NSCursor.pop()
-            cursorPushed = false
-        }
     }
 }
 

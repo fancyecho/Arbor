@@ -2,13 +2,14 @@ import AppKit
 import Observation
 
 enum ViewMode: String, CaseIterable {
-    case list, grid, columns
+    case list, grid, columns, space
 
     var title: String {
         switch self {
         case .list: "列表"
         case .grid: "图标"
         case .columns: "分栏"
+        case .space: "空间"
         }
     }
 
@@ -17,6 +18,7 @@ enum ViewMode: String, CaseIterable {
         case .list: "list.bullet"
         case .grid: "square.grid.2x2"
         case .columns: "rectangle.split.3x1"
+        case .space: "chart.pie"
         }
     }
 }
@@ -69,6 +71,8 @@ final class TabState: Identifiable {
 
     private struct VisibleKey: Equatable {
         var generation: Int, filter: String, sort: SortOrder, showHidden: Bool
+        /// Space scans change folder sizes, which matters only when sorting by size.
+        var sizes: Int
     }
 
     @ObservationIgnored private var itemsGeneration = 0
@@ -96,7 +100,8 @@ final class TabState: Identifiable {
     var visibleItems: [FileItem] {
         var sort = self.sort
         sort.foldersFirst = AppSettings.shared.foldersFirst
-        let key = VisibleKey(generation: itemsGeneration, filter: filter, sort: sort, showHidden: AppSettings.shared.showHidden)
+        let key = VisibleKey(generation: itemsGeneration, filter: filter, sort: sort, showHidden: AppSettings.shared.showHidden,
+                             sizes: sort.key == .size ? SpaceIndex.shared.revision : 0)
         _ = items // register observation on the raw items
         _ = searchResults
         if let cache = visibleCache, cache.key == key { return cache.items }
@@ -107,12 +112,19 @@ final class TabState: Identifiable {
         if !needle.isEmpty, !isSearchMode || tagQuery != nil {
             result.removeAll { !NameMatcher.matches($0.name, needle) }
         }
-        result = sort.sorted(result)
+        let folderSizes = sort.key == .size && !isSearchMode ? SpaceIndex.shared.childSizes(of: url) : nil
+        result = sort.sorted(result, folderSize: folderSizes.map { sizes in { sizes[$0.lastPathComponent] } })
         visibleCache = (key, result)
         return result
     }
 
-    var selectedItems: [FileItem] { visibleItems.filter { selection.contains($0.url) } }
+    var selectedItems: [FileItem] {
+        let visible = visibleItems.filter { selection.contains($0.url) }
+        // The space view can select files deep inside the folder (its largest-files list, the rings).
+        guard viewMode == .space, visible.count < selection.count else { return visible }
+        let known = Set(visible.map(\.url))
+        return visible + selection.subtracting(known).sorted { $0.path < $1.path }.map(FileItem.init(url:))
+    }
 
     var canGoBack: Bool { !backStack.isEmpty }
     var canGoForward: Bool { !forwardStack.isEmpty }
@@ -294,6 +306,12 @@ final class TabState: Identifiable {
                 let wanted = Set((selecting ?? self.selection).map(\.standardizedFileURL.path))
                 let matched = Set(loaded.lazy.filter { wanted.contains($0.url.standardizedFileURL.path) }.map(\.url))
                 if matched != self.selection { self.selection = matched }
+                // Same for an item waiting to be named (a new folder's URL has no trailing slash; the
+                // listed one does), so every view recognizes it and opens the name field.
+                if let renaming = self.renamingURL,
+                   let item = loaded.first(where: { $0.url.isSameFile(as: renaming) }), item.url != renaming {
+                    self.renamingURL = item.url
+                }
             case .failure(let error):
                 self.items = []
                 self.itemsGeneration += 1

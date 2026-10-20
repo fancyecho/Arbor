@@ -91,28 +91,26 @@ struct TextPreview: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 if isMarkdown, !editing {
-                    Picker("", selection: $showMarkdown) {
-                        Text("预览").tag(true)
-                        Text("源码").tag(false)
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .fixedSize()
+                    GlassSegmented(selection: $showMarkdown, options: [
+                        .init(value: true, title: "预览", symbol: "eye"),
+                        .init(value: false, title: "源码", symbol: "chevron.left.forwardslash.chevron.right"),
+                    ], compact: true)
                 }
                 Spacer()
                 if editing {
                     Button("取消") { editing = false }
+                        .buttonStyle(.glassCompact)
                     Button("存储") { save() }
                         .keyboardShortcut("s")
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(.glassProminentCompact)
                 } else {
                     Button("编辑", systemImage: "pencil") {
                         draft = text
                         editing = true
                     }
+                    .buttonStyle(.glassCompact)
                 }
             }
-            .controlSize(.small)
 
             Group {
                 if editing {

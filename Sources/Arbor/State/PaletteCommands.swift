@@ -64,6 +64,8 @@ enum PaletteCommands {
             cmd("列表视图", "list.bullet", "⌘1") { ws.setViewMode(.list) },
             cmd("图标视图", "square.grid.2x2", "⌘2") { ws.setViewMode(.grid) },
             cmd("分栏视图", "rectangle.split.3x1", "⌘3") { ws.setViewMode(.columns) },
+            cmd("空间视图：分析空间占用", "chart.pie", "⌘4") { ws.analyzeSpace() },
+            cmd("扫描整个磁盘", "internaldrive") { ws.analyzeSpace(URL(fileURLWithPath: "/")) },
             cmd("在终端中打开", "terminal", "⌥⌘T") { ws.openInTerminal() },
             cmd("在\(AppSettings.shared.editorName)中打开", "chevron.left.forwardslash.chevron.right", "⌥⌘E") { ws.openInEditor() },
             cmd("在访达中显示", "macwindow", "⌥⌘R") { ws.revealInFinder() },

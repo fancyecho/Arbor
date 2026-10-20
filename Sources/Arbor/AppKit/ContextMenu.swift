@@ -32,7 +32,7 @@ enum ContextMenuBuilder {
         "打开方式", "在新标签页中打开", "在另一窗格中打开", "添加到个人收藏", "快速查看",
         "复制", "加入暂存架", "拷贝到另一窗格", "移动到另一窗格", "批量重命名…",
         "拷贝路径", "拷贝路径为", "在终端中打开", "在编辑器中打开", "在访达中显示", "显示简介",
-        "标签", "工具", "图片", "自定义命令", "新建文件", "导出目录树",
+        "标签", "工具", "图片", "自定义命令", "新建文件", "导出目录树", "分析空间占用",
     ]
 
     /// Sections separated by dividers, minus the entries hidden in Settings.
@@ -71,6 +71,7 @@ enum ContextMenuBuilder {
                     MenuEntry(AppSettings.shared.showHidden ? "隐藏隐藏文件" : "显示隐藏文件", symbol: "eye") { ws.toggleHidden() },
                     MenuEntry("批量重命名全部…", symbol: "character.cursor.ibeam") { ws.batchRename([]) },
                     MenuEntry("导出目录树", symbol: "list.bullet.indent") { ws.exportTree(tab.url) },
+                    MenuEntry("分析空间占用", symbol: "chart.pie") { ws.analyzeSpace() },
                 ],
             ]
         }
@@ -88,6 +89,7 @@ enum ContextMenuBuilder {
             if !SidebarStore.shared.isFavorite(folder) {
                 open.append(MenuEntry("添加到个人收藏", symbol: "star") { SidebarStore.shared.addFavorite(folder) })
             }
+            open.append(MenuEntry("分析空间占用", symbol: "chart.pie") { ws.analyzeSpace(folder) })
         }
         open.append(MenuEntry("快速查看", symbol: "eye") { ws.quickLook(urls) })
 

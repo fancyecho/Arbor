@@ -251,6 +251,8 @@ struct ArborCommands: Commands {
                 .shortcut("图标视图", KeyboardShortcut("2"))
             Button("分栏视图") { workspace?.setViewMode(.columns) }
                 .shortcut("分栏视图", KeyboardShortcut("3"))
+            Button("空间视图") { workspace?.setViewMode(.space) }
+                .shortcut("空间视图", KeyboardShortcut("4"))
             Divider()
             Button("单窗格") { workspace?.setPaneCount(1) }
                 .shortcut("单窗格", KeyboardShortcut("1", modifiers: [.command, .control]))

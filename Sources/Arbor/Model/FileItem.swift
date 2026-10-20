@@ -85,10 +85,17 @@ struct SortOrder: Equatable, Codable {
     var ascending = true
     var foldersFirst = true
 
-    func sorted(_ items: [FileItem]) -> [FileItem] {
-        items.sorted { a, b in
+    /// `folderSize` supplies sizes for folders (from a space scan) when sorting by size.
+    func sorted(_ items: [FileItem], folderSize: ((URL) -> Int64?)? = nil) -> [FileItem] {
+        var sizes: [URL: Int64] = [:]
+        if key == .size, let folderSize {
+            for item in items where item.isNavigable { sizes[item.url] = folderSize(item.url) }
+        }
+        return items.sorted { a, b in
             if foldersFirst, a.isNavigable != b.isNavigable { return a.isNavigable }
-            let result = compare(a, b)
+            let result = key == .size && !sizes.isEmpty
+                ? Self.cmp(sizes[a.url] ?? a.size ?? -1, sizes[b.url] ?? b.size ?? -1)
+                : compare(a, b)
             if result == .orderedSame {
                 return a.name.localizedStandardCompare(b.name) == .orderedAscending
             }
@@ -120,6 +127,7 @@ enum Format {
     static let byteFormatter: ByteCountFormatter = {
         let f = ByteCountFormatter()
         f.countStyle = .file
+        f.allowsNonnumericFormatting = false // "0 KB", never the English "Zero KB"
         return f
     }()
 

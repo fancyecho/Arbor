@@ -13,7 +13,7 @@ enum Snapshot {
         let output = URL(fileURLWithPath: args[index + 1])
         if args.contains("--dark") { NSApp.appearance = NSAppearance(named: .darkAqua) }
         if args.contains("--light") { NSApp.appearance = NSAppearance(named: .aqua) }
-        for scene in ["demo", "palette", "compare", "sync", "text", "photos", "stress", "narrow", "toggles", "update", "update-install"] where args.contains("--" + scene) {
+        for scene in ["demo", "palette", "compare", "sync", "text", "photos", "stress", "narrow", "toggles", "space", "newfolder", "update", "update-install"] where args.contains("--" + scene) {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
                 NotificationCenter.default.post(name: demoRequest, object: scene)
             }

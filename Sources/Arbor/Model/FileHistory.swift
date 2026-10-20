@@ -88,6 +88,18 @@ final class FileHistory {
 
     func record(_ title: String, steps: [UndoStep]) {
         guard !steps.isEmpty else { return }
+        // Every change Arbor makes is recorded here with its inverse, so this is the one place that can
+        // tell caches (space scans) what happened: an undo "move a back to b" means b went to a; an undo
+        // "trash x" means x was created.
+        var added: [URL] = []
+        var removed: [URL] = []
+        for step in steps {
+            switch step {
+            case .move(let from, let to): removed.append(to); added.append(from)
+            case .trash(let url): added.append(url)
+            }
+        }
+        FileChanges.post(added: added, removed: removed)
         undoStack.append(UndoEntry(title: title, steps: steps))
         if undoStack.count > limit { undoStack.removeFirst(undoStack.count - limit) }
         redoStack.removeAll()
@@ -123,6 +135,15 @@ final class FileHistory {
                 switch result {
                 case .success(let inverse):
                     onSuccess(UndoEntry(title: entry.title, steps: inverse))
+                    var added: [URL] = []
+                    var removed: [URL] = []
+                    for step in steps {
+                        switch step {
+                        case .move(let from, let to): removed.append(from); added.append(to)
+                        case .trash(let url): removed.append(url)
+                        }
+                    }
+                    FileChanges.post(added: added, removed: removed)
                     let restored = steps.compactMap { step -> URL? in
                         if case .move(_, let to) = step, !to.lastPathComponent.hasPrefix(".arbor-undo-") { return to }
                         return nil

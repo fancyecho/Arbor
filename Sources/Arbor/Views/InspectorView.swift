@@ -82,7 +82,7 @@ private struct SingleItemInfo: View {
                             HStack(spacing: 6) { ProgressView().controlSize(.mini); Text("正在计算…") }
                         } else {
                             Button("计算") { Task { await computeSize() } }
-                                .buttonStyle(.link)
+                                .buttonStyle(.tintLink)
                         }
                     } else {
                         Text(Format.bytes(item.size))
@@ -101,11 +101,11 @@ private struct SingleItemInfo: View {
             }
             .font(.system(size: 12))
 
-            HStack {
+            HStack(spacing: 8) {
                 Button("拷贝路径", systemImage: "link") { FileOperations.copyPaths([item.url]) }
                 Button("在访达中显示", systemImage: "macwindow") { FileOperations.revealInFinder([item.url]) }
             }
-            .controlSize(.small)
+            .buttonStyle(.glassCompact)
         }
         .task(id: item.url) {
             folderSize = nil
@@ -114,6 +114,11 @@ private struct SingleItemInfo: View {
     }
 
     private func computeSize() async {
+        // Already known from a space scan: no need to walk the folder again.
+        if let scanned = SpaceIndex.shared.folderSize(item.url) {
+            folderSize = scanned
+            return
+        }
         computing = true
         let size = await DirectoryLoader.folderSize(item.url)
         if !Task.isCancelled { folderSize = size }

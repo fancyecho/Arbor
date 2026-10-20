@@ -5,6 +5,8 @@ import SwiftUI
 struct PaneView: View {
     let workspace: WorkspaceState
     let pane: PaneState
+    /// Width the content is laid out at; wider than the card while the card grows over it (see DeckView).
+    var contentWidth: CGFloat?
 
     @Environment(\.arborTint) private var tint
 
@@ -21,6 +23,8 @@ struct PaneView: View {
             TabContentView(workspace: workspace, pane: pane, tab: tab, isActive: isActive)
             StatusBarView(tab: tab)
         }
+        .frame(width: contentWidth, alignment: .leading)
+        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
         .background { Self.shape.fill(Glass.card(active: isActive || workspace.paneCount == 1)) }
         .clipShape(Self.shape)
         .overlay {
@@ -41,6 +45,7 @@ struct TabContentView: View {
 
     /// Entering a folder fades its contents in and lets them settle a few points, instead of a hard swap.
     @State private var entrance: CGFloat = 1
+    @Environment(\.plannedPaneWidth) private var plannedWidth
 
     var body: some View {
         let items = tab.visibleItems
@@ -50,9 +55,14 @@ struct TabContentView: View {
                 FileListView(
                     workspace: workspace, pane: pane, tab: tab,
                     items: items, selection: tab.selection, sort: tab.sort, renamingURL: tab.renamingURL,
-                    pendingScrollAnchor: tab.pendingScrollAnchor, showsLocation: tab.isSearchMode, compareMarks: tab.compareMarks, visibleColumns: AppSettings.shared.listColumns, tint: workspace.tint.nsColor, showsInsights: AppSettings.shared.showListInsights, isActive: isActive, focusToken: workspace.focusToken)
+                    pendingScrollAnchor: tab.pendingScrollAnchor, showsLocation: tab.isSearchMode, compareMarks: tab.compareMarks, visibleColumns: AppSettings.shared.listColumns, tint: workspace.tint.nsColor, showsInsights: AppSettings.shared.showListInsights, isActive: isActive, focusToken: workspace.focusToken,
+                    plannedWidth: plannedWidth, spaceRevision: SpaceIndex.shared.revision)
             case .grid:
+                // While the pane shrinks, icons keep the final arrangement instead of re-wrapping every frame.
                 FileGridView(workspace: workspace, pane: pane, tab: tab, items: items, isActive: isActive)
+                    .frame(width: plannedWidth, alignment: .leading)
+                    .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+                    .clipped()
             case .columns:
                 // Search results span many folders, so they always use the list.
                 if tab.isSearchMode {
@@ -60,10 +70,12 @@ struct TabContentView: View {
                         workspace: workspace, pane: pane, tab: tab,
                         items: items, selection: tab.selection, sort: tab.sort, renamingURL: tab.renamingURL,
                         pendingScrollAnchor: tab.pendingScrollAnchor, showsLocation: true, compareMarks: [:], visibleColumns: AppSettings.shared.listColumns, tint: workspace.tint.nsColor, showsInsights: AppSettings.shared.showListInsights, isActive: isActive,
-                        focusToken: workspace.focusToken)
+                        focusToken: workspace.focusToken, plannedWidth: plannedWidth, spaceRevision: SpaceIndex.shared.revision)
                 } else {
                     ColumnBrowserView(workspace: workspace, pane: pane, tab: tab, items: items, isActive: isActive)
                 }
+            case .space:
+                SpaceView(workspace: workspace, pane: pane, tab: tab, isActive: isActive)
             }
         }
         .overlay {
@@ -73,7 +85,7 @@ struct TabContentView: View {
                 } description: {
                     Text(message)
                 } actions: {
-                    Button("返回") { tab.goBack() }.disabled(!tab.canGoBack)
+                    Button("返回") { tab.goBack() }.disabled(!tab.canGoBack).buttonStyle(.glass)
                 }
             } else if tab.isLoading || (tab.isSearching && items.isEmpty) {
                 ProgressView().controlSize(.small)
@@ -83,7 +95,7 @@ struct TabContentView: View {
                     let hidden = tab.items.filter(\.isHidden).count
                     if tab.filter.isEmpty, hidden > 0, !AppSettings.shared.showHidden {
                         Button("显示 \(hidden) 个隐藏项目") { AppSettings.shared.showHidden = true }
-                            .buttonStyle(.link)
+                            .buttonStyle(.tintLink)
                             .font(.caption)
                     }
                 }

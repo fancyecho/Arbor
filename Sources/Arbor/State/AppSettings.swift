@@ -68,6 +68,11 @@ final class AppSettings {
         didSet { defaults.set(autoSaveWorkspaces, forKey: "autoSaveWorkspaces") }
     }
 
+    /// How the space view colors its rings.
+    var spaceColoring: SpaceColoring {
+        didSet { defaults.set(spaceColoring.rawValue, forKey: "spaceColoring") }
+    }
+
     /// Panes in a new window: 1–3, or 0 to match the window that was closed or focused last.
     var newWindowPaneCount: Int {
         didSet { defaults.set(newWindowPaneCount, forKey: "newWindowPaneCount") }
@@ -139,7 +144,9 @@ final class AppSettings {
         defaults.register(defaults: ["showMenuBarIcon": true, "showListInsights": true, "autoSaveWorkspaces": true])
         autoSaveWorkspaces = defaults.bool(forKey: "autoSaveWorkspaces")
         newWindowPaneCount = min(max(defaults.integer(forKey: "newWindowPaneCount"), 0), 3)
-        defaults.register(defaults: ["autoCheckUpdates": true, "includePreviewUpdates": true])
+        spaceColoring = SpaceColoring(rawValue: defaults.string(forKey: "spaceColoring") ?? "") ?? .folders
+        // Stable releases by default; previews only for people who opt in.
+        defaults.register(defaults: ["autoCheckUpdates": true, "includePreviewUpdates": false])
         autoCheckUpdates = defaults.bool(forKey: "autoCheckUpdates")
         includePreviewUpdates = defaults.bool(forKey: "includePreviewUpdates")
         showListInsights = defaults.bool(forKey: "showListInsights")

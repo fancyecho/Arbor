@@ -103,8 +103,9 @@ struct SidebarView: View {
             Section(isExpanded: expanded("locations")) {
                 ForEach(volumes.volumes, id: \.url) { place in
                     row(place) {
+                        Divider()
+                        Button("分析空间占用", systemImage: "chart.pie") { workspace.analyzeSpace(place.url) }
                         if place.isEjectable {
-                            Divider()
                             Button("推出“\(place.name)”", systemImage: "eject") { volumes.eject(place) }
                         }
                     }
@@ -167,6 +168,9 @@ struct SidebarView: View {
         HStack {
             Label(place.name, systemImage: place.symbol)
                 .opacity(dimmed ? 0.45 : 1)
+                .overlay(alignment: .bottomLeading) {
+                    if let fullness = place.fullness { CapacityHairline(fullness: fullness).offset(x: 26, y: 5) }
+                }
             Spacer(minLength: 0)
             if place.isEjectable {
                 Button { volumes.eject(place) } label: { Image(systemName: "eject.fill").font(.caption) }
@@ -268,5 +272,23 @@ private struct SidebarRowStyle: ViewModifier {
                     .padding(.horizontal, 10)
                     .animation(.easeOut(duration: 0.12), value: hovering)
             )
+    }
+}
+
+/// How full a disk is, as a hairline under its name; turns orange past 90%.
+private struct CapacityHairline: View {
+    let fullness: Double
+    @Environment(\.arborTint) private var tint
+
+    var body: some View {
+        Capsule()
+            .fill(Color.primary.opacity(0.1))
+            .frame(width: 64, height: 2.5)
+            .overlay(alignment: .leading) {
+                Capsule()
+                    .fill(fullness > 0.9 ? Color.orange : tint)
+                    .frame(width: max(64 * fullness, 2.5), height: 2.5)
+            }
+            .help("已用 \(Int((fullness * 100).rounded()))%")
     }
 }

@@ -8,6 +8,7 @@ extension WorkspaceState {
     private func targets(_ urls: [URL]?) -> [URL] {
         if let urls { return urls }
         let tab = activeTab
+        if tab.viewMode == .space { return tab.selectedItems.map(\.url) }
         return tab.visibleItems.filter { tab.selection.contains($0.url) }.map(\.url)
     }
 
@@ -31,7 +32,8 @@ extension WorkspaceState {
     func openSelection(_ urls: [URL]? = nil) {
         let tab = activeTab
         let selected = targets(urls)
-        let items = tab.visibleItems.filter { selected.contains($0.url) }
+        let visible = tab.visibleItems
+        let items = selected.map { url in visible.first { $0.url == url } ?? FileItem(url: url) }
         // A single folder navigates; multiple items open in their apps, folders in new tabs.
         if items.count == 1, let item = items.first {
             tab.open(item)
@@ -124,16 +126,21 @@ extension WorkspaceState {
         activeTab.renamingURL = target
     }
 
-    /// Called by views when inline editing ends.
-    func commitRename(_ url: URL, to newName: String, in tab: TabState) {
+    /// Called by views when inline editing ends. Returns false if the rename failed (e.g. the name is
+    /// taken); the item keeps its name and, like Finder, naming resumes once the alert is dismissed.
+    @discardableResult
+    func commitRename(_ url: URL, to newName: String, in tab: TabState) -> Bool {
         tab.renamingURL = nil
-        guard newName != url.lastPathComponent else { return }
+        guard newName != url.lastPathComponent else { return true }
         do {
             let renamed = try FileOperations.rename(url, to: newName)
             FileHistory.shared.record("重命名", steps: [.move(from: renamed, to: url)])
             tab.reload(selecting: [renamed])
+            return true
         } catch {
+            renameAfterAlert = (tab, url)
             report(error)
+            return false
         }
     }
 
@@ -275,6 +282,12 @@ extension WorkspaceState {
 
     func toggleHidden() {
         AppSettings.shared.showHidden.toggle()
+    }
+
+    /// Shows where the space under `url` (default: the current folder) goes.
+    func analyzeSpace(_ url: URL? = nil) {
+        if let url, !url.isSameFile(as: activeTab.url) { activeTab.navigate(to: url) }
+        setViewMode(.space)
     }
 
     func setViewMode(_ mode: ViewMode) {

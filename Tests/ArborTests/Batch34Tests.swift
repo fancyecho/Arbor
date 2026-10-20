@@ -260,5 +260,11 @@ final class UpdaterTests: XCTestCase {
         XCTAssertNil(ReleaseInfo.newest(in: releases, after: ReleaseVersion(tag: "v0.1.0-dev.3")!, includePreviews: true))
         XCTAssertEqual(ReleaseInfo.newest(in: releases + [try release("v0.1.0")], after: current, includePreviews: false)?.tagName,
                        "v0.1.0")
+        // Going final: 1.0.0 outranks every 0.1.0 preview, and reaches people who turned previews off.
+        let dev4 = ReleaseVersion(tag: "v0.1.0-dev.4")!
+        let withFinal = releases + [try release("v0.1.0-dev.4", prerelease: true), try release("v1.0.0")]
+        XCTAssertEqual(ReleaseInfo.newest(in: withFinal, after: dev4, includePreviews: true)?.tagName, "v1.0.0")
+        XCTAssertEqual(ReleaseInfo.newest(in: withFinal, after: dev4, includePreviews: false)?.tagName, "v1.0.0")
+        XCTAssertNil(ReleaseInfo.newest(in: withFinal, after: ReleaseVersion(tag: "v1.0.0")!, includePreviews: true))
     }
 }
