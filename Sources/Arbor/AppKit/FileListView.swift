@@ -724,7 +724,12 @@ final class FileTableView: NSTableView {
     }
 
     override func draggingEnded(_ sender: NSDraggingInfo) {
-        super.draggingEnded(sender)
+        // An optional NSDraggingDestination method NSTableView doesn't implement: calling super here
+        // crashed (unrecognized selector) whenever a drag that had crossed the list ended elsewhere —
+        // e.g. dragging an app out to AppCleaner.
+        if NSTableView.instancesRespond(to: #selector(NSDraggingDestination.draggingEnded(_:))) {
+            super.draggingEnded(sender)
+        }
         onDragLeave?()
     }
     var onKey: ((NSEvent) -> Bool)?

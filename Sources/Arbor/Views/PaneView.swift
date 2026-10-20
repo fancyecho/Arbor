@@ -89,7 +89,8 @@ struct TabContentView: View {
                 }
             } else if tab.isLoading || (tab.isSearching && items.isEmpty) {
                 ProgressView().controlSize(.small)
-            } else if items.isEmpty {
+            } else if items.isEmpty, tab.viewMode != .columns || tab.isSearchMode {
+                // (The column view shows this inside its own column, not across all of them.)
                 VStack(spacing: 6) {
                     Text(tab.filter.isEmpty ? "文件夹为空" : "没有匹配“\(tab.filter)”的项目")
                     let hidden = tab.items.filter(\.isHidden).count

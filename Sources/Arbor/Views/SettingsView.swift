@@ -17,17 +17,24 @@ struct SettingsView: View {
 private struct GeneralSettings: View {
     @Bindable private var settings = AppSettings.shared
     @State private var opensFolders = DefaultFolderApp.isArbor
+    /// Read-only: who opens folders right now (shown so the setting can be checked at a glance).
+    private var folderHandlerName: String {
+        guard let id = DefaultFolderApp.currentHandler else { return "未知" }
+        if id.lowercased() == DefaultFolderApp.finderID { return "访达" }
+        if id.lowercased() == Bundle.main.bundleIdentifier?.lowercased() { return "Arbor" }
+        return id
+    }
     @State private var folderError: String?
 
     private var folderFooter: String {
         if let folderError { return "没能更改：\(folderError)" }
-        return "打开后，从聚焦搜索、其他应用或终端（open 命令）打开的文件夹都会在 Arbor 里显示。桌面、程序坞和“在访达中显示”属于访达本身，仍会打开访达。关闭即恢复由访达打开。"
+        return "现在打开文件夹的是：\(folderHandlerName)。打开后，从聚焦搜索、其他应用或终端（open 命令）打开的文件夹都会在 Arbor 里显示。桌面、程序坞和“在访达中显示”属于访达本身，仍会打开访达。关闭即恢复由访达打开。"
     }
 
     private func setOpensFolders(_ on: Bool) {
         folderError = nil
-        DefaultFolderApp.set(on) { error in
-            folderError = error?.localizedDescription
+        DefaultFolderApp.set(on) { problem in
+            folderError = problem
             // Read back what the system actually did (the user may have declined).
             opensFolders = DefaultFolderApp.isArbor
         }

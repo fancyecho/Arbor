@@ -238,6 +238,12 @@ struct WorkspaceWindow: View {
                 }
                 StashShelf.shared.show()
                 return
+            case "columnsempty":
+                // Column view in the home folder with an empty folder (ARBOR_DEMO_DIR) selected… navigated into.
+                guard let path = ProcessInfo.processInfo.environment["ARBOR_DEMO_DIR"] else { return }
+                workspace.visiblePanes[0].activeTab.navigate(to: URL(fileURLWithPath: path))
+                workspace.visiblePanes[0].activeTab.viewMode = .columns
+                return
             case "narrow":
                 // Three panes and the inspector in a window narrower than they'd like.
                 workspace.setPaneCount(3)

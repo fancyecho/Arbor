@@ -103,6 +103,19 @@ struct ColumnBrowserView: View {
         }
         .listStyle(.inset)
         .scrollContentBackground(.hidden)
+        .overlay {
+            if items.isEmpty, !tab.isLoading {
+                VStack(spacing: 6) {
+                    Text("文件夹为空").font(.callout).foregroundStyle(.tertiary)
+                    let hidden = tab.items.filter(\.isHidden).count
+                    if hidden > 0, !AppSettings.shared.showHidden {
+                        Button("显示 \(hidden) 个隐藏项目") { AppSettings.shared.showHidden = true }
+                            .buttonStyle(.tintLink)
+                            .font(.caption)
+                    }
+                }
+            }
+        }
         .focused($focused)
         .frame(width: 240)
         .onChange(of: workspace.focusToken, initial: true) { _, _ in if isActive { focused = true } }
@@ -123,15 +136,29 @@ private struct DirectoryColumn: View {
     @State private var items: [FileItem] = []
 
     var body: some View {
-        List(selection: Binding<String?>(
-            get: { highlighted?.standardizedFileURL.path },
-            set: { path in if let path, let item = items.first(where: { $0.url.standardizedFileURL.path == path }) { pick(item.url) } }
-        )) {
-            ForEach(items) { item in
-                ColumnRow(item: item, isRenaming: false) { _ in }
-                    .tag(item.url.standardizedFileURL.path)
-                    .listRowSeparator(.hidden)
-                    .background { if item.id == items.first?.id { SlimScrollers(tint: tint).frame(width: 0, height: 0) } }
+        // The folder you came through is marked with a wash of the workspace color, like the sidebar —
+        // not the system's gray "unfocused selection".
+        let marked = highlighted?.standardizedFileURL.path
+        ScrollViewReader { proxy in
+            List {
+                ForEach(items) { item in
+                    let isMarked = item.url.standardizedFileURL.path == marked
+                    ColumnRow(item: item, isRenaming: false) { _ in }
+                        .fontWeight(isMarked ? .semibold : .regular)
+                        .contentShape(Rectangle())
+                        .onTapGesture { pick(item.url) }
+                        .id(item.url.standardizedFileURL.path)
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(
+                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                .fill(tint.opacity(isMarked ? 0.18 : 0))
+                                .padding(.horizontal, 6)
+                        )
+                        .background { if item.id == items.first?.id { SlimScrollers(tint: tint).frame(width: 0, height: 0) } }
+                }
+            }
+            .onChange(of: items.count) { _, _ in
+                if let marked { proxy.scrollTo(marked, anchor: .center) }
             }
         }
         .listStyle(.inset)
