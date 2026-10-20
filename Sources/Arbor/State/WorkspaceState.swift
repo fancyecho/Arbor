@@ -52,8 +52,15 @@ final class WorkspaceState {
         paneCount = min(max(snapshot?.paneCount ?? 2, 1), Self.maxPanes)
         activePaneID = initial[min(max(snapshot?.activePane ?? 0, 0), initial.count - 1)].id
         showInspector = snapshot?.showInspector ?? false
+        showSidebar = snapshot?.showSidebar ?? true
+        if let fractions = Self.validFractions(snapshot?.paneFractions) { paneFractions = fractions }
         tint = snapshot?.tint.flatMap(WorkspaceTint.init(rawValue:)) ?? .indigo
         openWorkspaceID = snapshot?.openWorkspace.flatMap(UUID.init(uuidString:))
+    }
+
+    private static func validFractions(_ values: [Double]?) -> [CGFloat]? {
+        guard let values, values.count == maxPanes, values.allSatisfy({ $0.isFinite && $0 > 0 }) else { return nil }
+        return values.map { CGFloat($0) }
     }
 
     private static func makePanes(_ snapshot: WorkspaceSnapshot?) -> [PaneState] {
@@ -77,6 +84,8 @@ final class WorkspaceState {
         paneCount = min(max(snapshot.paneCount, 1), Self.maxPanes)
         activePaneID = rebuilt[min(max(snapshot.activePane, 0), rebuilt.count - 1)].id
         showInspector = snapshot.showInspector
+        if let sidebar = snapshot.showSidebar { showSidebar = sidebar }
+        paneFractions = Self.validFractions(snapshot.paneFractions) ?? [1, 1, 1]
         if let tint = snapshot.tint.flatMap(WorkspaceTint.init(rawValue:)) { self.tint = tint }
         focusToken += 1
     }

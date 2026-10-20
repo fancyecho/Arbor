@@ -68,6 +68,11 @@ final class AppSettings {
         didSet { defaults.set(autoSaveWorkspaces, forKey: "autoSaveWorkspaces") }
     }
 
+    /// Panes in a new window: 1–3, or 0 to match the window that was closed or focused last.
+    var newWindowPaneCount: Int {
+        didSet { defaults.set(newWindowPaneCount, forKey: "newWindowPaneCount") }
+    }
+
     var autoCheckUpdates: Bool {
         didSet { defaults.set(autoCheckUpdates, forKey: "autoCheckUpdates") }
     }
@@ -133,6 +138,7 @@ final class AppSettings {
             ?? ExternalApp.installedEditors.first?.bundleID ?? "com.apple.TextEdit"
         defaults.register(defaults: ["showMenuBarIcon": true, "showListInsights": true, "autoSaveWorkspaces": true])
         autoSaveWorkspaces = defaults.bool(forKey: "autoSaveWorkspaces")
+        newWindowPaneCount = min(max(defaults.integer(forKey: "newWindowPaneCount"), 0), 3)
         defaults.register(defaults: ["autoCheckUpdates": true, "includePreviewUpdates": true])
         autoCheckUpdates = defaults.bool(forKey: "autoCheckUpdates")
         includePreviewUpdates = defaults.bool(forKey: "includePreviewUpdates")

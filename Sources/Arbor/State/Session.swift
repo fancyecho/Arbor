@@ -28,6 +28,15 @@ struct WorkspaceSnapshot: Codable, Equatable {
     var tint: String? = nil
     /// The saved workspace the window was showing (its id), so relaunching keeps the link.
     var openWorkspace: String? = nil
+    /// Optional so older sessions and saved workspaces still decode (they keep the defaults).
+    var showSidebar: Bool? = nil
+    var paneFractions: [Double]? = nil
+
+    /// Just the shape of the window — pane count, widths, sidebar and inspector — with no tabs.
+    var layoutOnly: WorkspaceSnapshot {
+        WorkspaceSnapshot(panes: [], paneCount: paneCount, activePane: 0, showInspector: showInspector,
+                          showSidebar: showSidebar, paneFractions: paneFractions)
+    }
 }
 
 struct SavedWorkspace: Codable, Identifiable, Equatable {
@@ -85,7 +94,8 @@ extension WorkspaceState {
         WorkspaceSnapshot(panes: panes.map(\.snapshot), paneCount: paneCount,
                           activePane: panes.firstIndex { $0.id == activePaneID } ?? 0,
                           showInspector: showInspector, tint: tint.rawValue,
-                          openWorkspace: openWorkspaceID?.uuidString)
+                          openWorkspace: openWorkspaceID?.uuidString, showSidebar: showSidebar,
+                          paneFractions: paneFractions.map(Double.init))
     }
 }
 
@@ -154,8 +164,9 @@ final class WorkspaceRegistry {
     private struct Weak { weak var workspace: WorkspaceState? }
     private var alive: [Weak] = []
     private weak var lastActive: WorkspaceState?
-    private var didRestore = false
     private var lastSaved: WorkspaceSnapshot?
+    /// Workspaces whose window is on screen (a closed window's state can outlive it for a while).
+    private var onScreen: Set<ObjectIdentifier> = []
     /// Something to show once the next window opens (Finder service, Dock drop, menu bar).
     var pendingURL: URL?
 
@@ -172,11 +183,13 @@ final class WorkspaceRegistry {
         }
     }
 
-    /// The first window of a launch restores the previous session; later windows start fresh.
+    /// With no other window open — at launch, or after closing them all — the new window comes back as
+    /// the last one was. With windows open (⌘N) it takes their layout but starts from the home folder.
     func makeWorkspace() -> WorkspaceState {
-        let snapshot = didRestore ? nil : WorkspaceLibrary.shared.lastSession
-        didRestore = true
-        let workspace = WorkspaceState(snapshot: snapshot)
+        let workspace = WorkspaceState(snapshot: Self.snapshotForNewWindow(
+            last: WorkspaceLibrary.shared.lastSession,
+            focused: onScreen.isEmpty ? nil : current?.snapshot,
+            paneSetting: AppSettings.shared.newWindowPaneCount))
         if let url = pendingURL {
             pendingURL = nil
             if let folder = TabState.resolvedDirectory(url) {
@@ -198,6 +211,30 @@ final class WorkspaceRegistry {
 
     func markActive(_ workspace: WorkspaceState) {
         lastActive = workspace
+    }
+
+    func windowAppeared(_ workspace: WorkspaceState) {
+        onScreen.insert(ObjectIdentifier(workspace))
+    }
+
+    func windowClosed(_ workspace: WorkspaceState) {
+        persist(workspace)
+        onScreen.remove(ObjectIdentifier(workspace))
+        if lastActive === workspace {
+            lastActive = alive.compactMap(\.workspace).last { onScreen.contains(ObjectIdentifier($0)) }
+        }
+    }
+
+    /// `last` is the saved session, `focused` the frontmost open window (nil when none is open).
+    /// `paneSetting` 1–3 fixes the pane count; 0 keeps whatever the source had.
+    static func snapshotForNewWindow(last: WorkspaceSnapshot?, focused: WorkspaceSnapshot?,
+                                     paneSetting: Int) -> WorkspaceSnapshot? {
+        let source = focused?.layoutOnly ?? last
+        guard (1...WorkspaceState.maxPanes).contains(paneSetting) else { return source }
+        var snapshot = source ?? WorkspaceSnapshot(panes: [], paneCount: paneSetting, activePane: 0, showInspector: false)
+        snapshot.paneCount = paneSetting
+        snapshot.activePane = min(snapshot.activePane, paneSetting - 1)
+        return snapshot
     }
 
     /// Saves the most recently active window's layout as the session to restore.

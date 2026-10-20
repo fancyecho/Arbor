@@ -9,7 +9,7 @@ struct ArborApp: App {
     var body: some Scene {
         WindowGroup("Arbor", id: "browser") {
             ContentView()
-                .frame(minWidth: 820, minHeight: 480)
+                .frame(minHeight: 480)
         }
         .defaultSize(width: 1280, height: 780)
         .windowToolbarStyle(.unified(showsTitle: false))
@@ -29,6 +29,7 @@ struct ArborApp: App {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let services = ServiceProvider()
+    private let dockMenu = DockMenu()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
@@ -50,6 +51,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// With the menu bar icon (and its hotkey) Arbor keeps running after the last window closes.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         MainActor.assumeIsolated { !AppSettings.shared.showMenuBarIcon }
+    }
+
+    /// Clicking the Dock icon with every browser window closed opens a new one. SwiftUI's own
+    /// handling skips this when any window is still visible (the stash shelf, the menu bar extra's
+    /// hidden panel), so Arbor decides by its browser windows only.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        MainActor.assumeIsolated {
+            if !AppActions.hasBrowserWindow { AppActions.show() }
+        }
+        return false
+    }
+
+    /// Right-clicking the Dock icon: a new window, favorites and saved workspaces.
+    func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
+        var menu: NSMenu?
+        MainActor.assumeIsolated { menu = dockMenu.build() }
+        return menu
     }
 
     /// Folders/files dropped on the Dock icon or opened with `open -a Arbor <path>`.

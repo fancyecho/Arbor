@@ -33,6 +33,13 @@ struct TabBarView: View {
                 .onChange(of: pane.activeTabID) { _, id in
                     withAnimation { proxy.scrollTo(id) }
                 }
+                // Tabs that run past a narrow pane dissolve before the + button instead of being cut.
+                .mask {
+                    HStack(spacing: 0) {
+                        Rectangle()
+                        LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing).frame(width: 10)
+                    }
+                }
             }
             .background {
                 // Double-click empty space for a new tab, like Safari.

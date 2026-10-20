@@ -31,6 +31,20 @@ private struct GeneralSettings: View {
                 Toggle("列表中显示大小条和新鲜度光点", isOn: $settings.showListInsights)
             }
             Section {
+                Picker("新窗口的窗格", selection: $settings.newWindowPaneCount) {
+                    Text("和上次一样").tag(0)
+                    Divider()
+                    Text("单窗格").tag(1)
+                    Text("双窗格").tag(2)
+                    Text("三窗格").tag(3)
+                }
+            } header: {
+                Text("窗口")
+            } footer: {
+                Text("关掉所有窗口后再打开，会回到关闭前的标签页；“和上次一样”还会沿用窗格数、窗格宽度、侧边栏和检查器。已有窗口时按 ⌘N，新窗口沿用当前窗口的布局，从主目录开始。")
+                    .foregroundStyle(.secondary)
+            }
+            Section {
                 Toggle("自动保存工作区的布局", isOn: $settings.autoSaveWorkspaces)
             } header: {
                 Text("工作区")

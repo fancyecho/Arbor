@@ -18,11 +18,31 @@ struct WorkspaceWindow: View {
     @Bindable var workspace: WorkspaceState
     @Environment(\.controlActiveState) private var controlActiveState
     @Environment(\.openWindow) private var openWindow
+    @State private var windowWidth: CGFloat = 0
 
     var body: some View {
         window
             .tint(workspace.tint.color)
             .environment(\.arborTint, workspace.tint.color)
+    }
+
+    /// 300pt when there's room; in a narrow window it gives up to 40pt so the panes keep theirs.
+    private var inspectorWidth: CGFloat {
+        let sidebar: CGFloat = workspace.showSidebar ? WindowLayout.sidebar : 0
+        let spare = windowWidth - sidebar - PanesView.preferredWidth(count: workspace.visiblePanes.count) - 10
+        return min(300, max(WindowLayout.inspector - 10, spare))
+    }
+
+    private var minimumWidth: CGFloat {
+        WindowLayout.minimumWidth(panes: workspace.visiblePanes.count, sidebar: workspace.showSidebar,
+                                  inspector: workspace.showInspector)
+    }
+
+    /// On a screen too small for everything that's switched on, the inspector gives way, then panes.
+    private func fitScreen() {
+        guard let screen = (NSApp.keyWindow?.screen ?? NSScreen.main)?.visibleFrame.width else { return }
+        if minimumWidth > screen, workspace.showInspector { workspace.showInspector = false }
+        while minimumWidth > screen, workspace.paneCount > 1 { workspace.setPaneCount(workspace.paneCount - 1) }
     }
 
     private var window: some View {
@@ -39,9 +59,13 @@ struct WorkspaceWindow: View {
                     .transition(.move(edge: .leading).combined(with: .opacity))
             }
             PanesView(workspace: workspace)
+                // Panes take their new width in one step when the sidebar or inspector toggles: animating it
+                // made the file list re-fit its columns every frame, so dates flickered in and out.
+                .transaction(value: workspace.showInspector) { $0.animation = nil }
+                .transaction(value: workspace.showSidebar) { $0.animation = nil }
             if workspace.showInspector {
                 InspectorView(workspace: workspace)
-                    .frame(width: 300)
+                    .frame(width: inspectorWidth)
                     .background(Glass.card(active: true), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Glass.hairline))
                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -50,7 +74,12 @@ struct WorkspaceWindow: View {
                     .transition(.move(edge: .trailing).combined(with: .opacity))
             }
         }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { windowWidth = $0 }
+        // Never narrower than what's switched on needs; switching more on widens the window.
+        .frame(minWidth: minimumWidth)
+        .onChange(of: minimumWidth, initial: true) { _, _ in fitScreen() }
         .background { WorkspaceBackdrop(tint: workspace.tint.color) }
+        .background { WindowFrameKeeper(minimumWidth: minimumWidth).frame(width: 0, height: 0) }
         .modifier(TransparentToolbar())
         .animation(.snappy(duration: 0.3), value: workspace.showSidebar)
         .animation(.snappy(duration: 0.3), value: workspace.showInspector)
@@ -83,8 +112,11 @@ struct WorkspaceWindow: View {
         .onChange(of: controlActiveState, initial: true) { _, state in
             if state == .key { WorkspaceRegistry.shared.markActive(workspace) }
         }
-        .onDisappear { WorkspaceRegistry.shared.persist(workspace) }
-        .onAppear { AppActions.openWindow = openWindow }
+        .onDisappear { WorkspaceRegistry.shared.windowClosed(workspace) }
+        .onAppear {
+            WorkspaceRegistry.shared.windowAppeared(workspace)
+            AppActions.openWindow = openWindow
+        }
         .onReceive(NotificationCenter.default.publisher(for: Snapshot.demoRequest)) { note in
             let fm = FileManager.default
             switch note.object as? String {
@@ -145,6 +177,35 @@ struct WorkspaceWindow: View {
                         default: workspace.focusNextPane()
                         }
                     }
+                }
+                return
+            case "toggles":
+                // Inspector on/off and pane count 2→3→2, a second apart, for watching column changes.
+                if let width = ProcessInfo.processInfo.environment["ARBOR_WINDOW_WIDTH"].flatMap(Double.init),
+                   let window = NSApp.windows.first(where: \.isVisible) {
+                    var frame = window.frame
+                    frame.size.width = width
+                    window.setFrame(frame, display: true)
+                    workspace.setPaneCount(3)
+                }
+                let steps: [() -> Void] = [
+                    { print("STEP inspector on"); workspace.showInspector = true },
+                    { print("STEP inspector off"); workspace.showInspector = false },
+                    { print("STEP panes 3"); workspace.setPaneCount(3) },
+                    { print("STEP panes 2"); workspace.setPaneCount(2) },
+                ]
+                for (index, step) in steps.enumerated() {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1 + Double(index) * 1.2, execute: step)
+                }
+                return
+            case "narrow":
+                // Three panes and the inspector in a window narrower than they'd like.
+                workspace.setPaneCount(3)
+                workspace.showInspector = true
+                if let window = NSApp.keyWindow ?? NSApp.windows.first(where: \.isVisible) {
+                    var frame = window.frame
+                    frame.size.width = 900
+                    window.setFrame(frame, display: true)
                 }
                 return
             case "photos":
@@ -371,8 +432,8 @@ struct WorkspaceWindow: View {
 struct PanesView: View {
     let workspace: WorkspaceState
 
-    private static let gap: CGFloat = 10
-    private static let minimumWidth: CGFloat = 240
+    static let gap: CGFloat = 10
+    static let minimumWidth: CGFloat = 240
 
     /// Fractions when the current drag began; widths are always computed from these, never incrementally.
     @State private var dragStart: [CGFloat]?
@@ -380,9 +441,9 @@ struct PanesView: View {
     var body: some View {
         GeometryReader { geometry in
             let panes = workspace.visiblePanes
-            let fractions = Array(workspace.paneFractions.prefix(panes.count))
-            let total = fractions.reduce(0, +)
             let available = geometry.size.width - Self.gap * CGFloat(panes.count + 1)
+            let widths = Self.widths(Array(workspace.paneFractions.prefix(panes.count)), available: available,
+                                     minimum: Self.minimumWidth)
             HStack(spacing: 0) {
                 ForEach(Array(panes.enumerated()), id: \.element.id) { index, pane in
                     if index > 0 {
@@ -395,7 +456,7 @@ struct PanesView: View {
                         }
                     }
                     PaneView(workspace: workspace, pane: pane)
-                        .frame(width: max(Self.minimumWidth, available * fractions[index] / total))
+                        .frame(width: widths[index])
                 }
             }
             .padding(.horizontal, Self.gap)
@@ -409,10 +470,52 @@ struct PanesView: View {
     private func resize(_ index: Int, translation: CGFloat, available: CGFloat) {
         let start = dragStart ?? workspace.paneFractions
         if dragStart == nil { dragStart = start }
+        let count = workspace.visiblePanes.count
         guard let fractions = Self.resized(start, divider: index, translation: translation, available: available,
-                                           count: workspace.visiblePanes.count, minimumWidth: Self.minimumWidth),
+                                           count: count, minimumWidth: Self.effectiveMinimum(available, count: count)),
               fractions != workspace.paneFractions else { return }
         workspace.paneFractions = fractions
+    }
+
+    /// Pane widths always add up to exactly `available`: panes are never pushed under the inspector
+    /// or out of the window. Each keeps `minimum` while there is room, and they share equally when not.
+    static func widths(_ fractions: [CGFloat], available: CGFloat, minimum: CGFloat) -> [CGFloat] {
+        let count = fractions.count
+        guard count > 0 else { return [] }
+        let space = max(available, 0)
+        let floor = min(minimum, space / CGFloat(count))
+        var weights = fractions.map { max($0, 0.0001) }
+        var fixed = [Bool](repeating: false, count: count)
+        var result = [CGFloat](repeating: floor, count: count)
+        // Water-filling: panes that would fall below the floor are pinned to it, the rest share what's left.
+        while true {
+            let free = (0..<count).filter { !fixed[$0] }
+            guard !free.isEmpty else { break }
+            let remaining = space - floor * CGFloat(count - free.count)
+            let weight = free.reduce(0) { $0 + weights[$1] }
+            var pinned = false
+            for index in free {
+                result[index] = remaining * weights[index] / weight
+                if result[index] < floor {
+                    fixed[index] = true
+                    result[index] = floor
+                    weights[index] = 0
+                    pinned = true
+                }
+            }
+            if !pinned { break }
+        }
+        return result
+    }
+
+    /// The preferred minimum, or an equal share when the panes can't all have it.
+    static func effectiveMinimum(_ available: CGFloat, count: Int) -> CGFloat {
+        min(minimumWidth, max(available, 0) / CGFloat(max(count, 1)))
+    }
+
+    /// Room the panes need for each to get the preferred minimum (cards plus the gaps around them).
+    static func preferredWidth(count: Int) -> CGFloat {
+        minimumWidth * CGFloat(count) + gap * CGFloat(count + 1)
     }
 
     static func resized(_ start: [CGFloat], divider index: Int, translation: CGFloat, available: CGFloat,

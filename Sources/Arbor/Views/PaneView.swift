@@ -125,8 +125,16 @@ struct StatusBarView: View {
             } else if !tab.filter.isEmpty {
                 Text("·  已过滤").foregroundStyle(tint)
             }
-            Spacer()
-            if let freeSpace { Text("可用 \(Format.bytes(freeSpace))") }
+            Spacer(minLength: 8)
+            if let freeSpace {
+                // Narrow panes drop the label, then the figure, instead of truncating it to "可用 73.…".
+                ViewThatFits {
+                    Text("可用 \(Format.bytes(freeSpace))")
+                    Text(Format.bytes(freeSpace)).help("可用空间")
+                    Color.clear.frame(width: 0)
+                }
+                .lineLimit(1)
+            }
         }
         .font(.system(size: 11))
         .foregroundStyle(.secondary)

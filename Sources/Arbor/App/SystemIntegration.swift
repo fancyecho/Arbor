@@ -9,19 +9,27 @@ enum AppActions {
     /// Captured from SwiftUI so AppKit code can open a new browser window.
     static var openWindow: OpenWindowAction?
 
-    static var hasBrowserWindow: Bool {
-        NSApp.windows.contains { $0.isVisible && ($0.identifier?.rawValue.hasPrefix("browser") ?? false) }
+    /// Open browser windows, including minimized ones (closed windows can linger in `NSApp.windows`).
+    private static var browserWindows: [NSWindow] {
+        NSApp.windows.filter {
+            ($0.isVisible || $0.isMiniaturized) && ($0.identifier?.rawValue.hasPrefix("browser") ?? false)
+        }
     }
+
+    static var hasBrowserWindow: Bool { browserWindows.contains(where: \.isVisible) }
 
     /// Brings Arbor forward and shows `url` (folders open in a new tab, files are revealed).
     static func show(_ url: URL? = nil) {
         NSApp.activate(ignoringOtherApps: true)
-        guard hasBrowserWindow, let workspace = WorkspaceRegistry.shared.current else {
+        let windows = browserWindows
+        guard let window = windows.first(where: \.isVisible) ?? windows.first,
+              let workspace = WorkspaceRegistry.shared.current else {
             WorkspaceRegistry.shared.pendingURL = url
             openWindow?(id: "browser")
             return
         }
-        NSApp.windows.first { $0.identifier?.rawValue.hasPrefix("browser") ?? false }?.makeKeyAndOrderFront(nil)
+        if window.isMiniaturized { window.deminiaturize(nil) }
+        window.makeKeyAndOrderFront(nil)
         guard let url else { return }
         if let folder = TabState.resolvedDirectory(url) {
             workspace.activePane.newTab(url: folder)
@@ -29,6 +37,12 @@ enum AppActions {
             workspace.activePane.newTab(url: url.deletingLastPathComponent()).selection = [url]
         }
         workspace.focusToken += 1
+    }
+
+    /// A new browser window (Dock menu); it takes the open window's layout, or the last one's.
+    static func newWindow() {
+        NSApp.activate(ignoringOtherApps: true)
+        openWindow?(id: "browser")
     }
 
     /// Global hotkey: show Arbor, or hide it if it's already in front.
