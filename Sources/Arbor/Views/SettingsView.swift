@@ -17,27 +17,17 @@ struct SettingsView: View {
 private struct GeneralSettings: View {
     @Bindable private var settings = AppSettings.shared
     @State private var opensFolders = DefaultFolderApp.isArbor
-    /// Read-only: who opens folders right now (shown so the setting can be checked at a glance).
-    private var folderHandlerName: String {
-        guard let id = DefaultFolderApp.currentHandler else { return "未知" }
-        if id.lowercased() == DefaultFolderApp.finderID { return "访达" }
-        if id.lowercased() == Bundle.main.bundleIdentifier?.lowercased() { return "Arbor" }
-        return id
-    }
     @State private var folderError: String?
 
     private var folderFooter: String {
         if let folderError { return "没能更改：\(folderError)" }
-        return "现在打开文件夹的是：\(folderHandlerName)。打开后，从聚焦搜索、其他应用或终端（open 命令）打开的文件夹都会在 Arbor 里显示。桌面、程序坞和“在访达中显示”属于访达本身，仍会打开访达。关闭即恢复由访达打开。"
+        return "现在负责“在访达中显示”的是：\(DefaultFolderApp.currentName)。打开后，其他应用里的“在访达中显示”（比如浏览器的下载、Raycast 的 Show in Finder、Xcode）会改用 Arbor，并选中那个文件，立即生效。macOS 不允许第三方应用接管“打开文件夹”本身：从聚焦搜索、Raycast 或程序坞直接打开文件夹仍会用访达。"
     }
 
     private func setOpensFolders(_ on: Bool) {
-        folderError = nil
-        DefaultFolderApp.set(on) { problem in
-            folderError = problem
-            // Read back what the system actually did (the user may have declined).
-            opensFolders = DefaultFolderApp.isArbor
-        }
+        folderError = DefaultFolderApp.set(on)
+        // Read back what was actually saved.
+        opensFolders = DefaultFolderApp.isArbor
     }
 
     var body: some View {
@@ -94,7 +84,7 @@ private struct GeneralSettings: View {
                 Toggle("自动计算文件夹大小", isOn: $settings.autoFolderSize)
             }
             Section {
-                Toggle("用 Arbor 打开文件夹（代替访达）", isOn: Binding(get: { opensFolders }, set: setOpensFolders))
+                Toggle("用 Arbor 代替访达显示文件", isOn: Binding(get: { opensFolders }, set: setOpensFolders))
             } header: {
                 Text("默认文件管理器")
             } footer: {

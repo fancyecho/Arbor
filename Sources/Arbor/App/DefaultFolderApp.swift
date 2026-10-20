@@ -1,53 +1,43 @@
 import AppKit
-import CoreServices
-import UniformTypeIdentifiers
 
-/// Making Arbor the app that opens folders (Settings › 通用). It changes the system's default handler
-/// for folders, so folders opened from Spotlight, `open` in Terminal or other apps come to Arbor.
-/// The desktop, the Dock and "Show in Finder" stay with Finder: they're Finder itself, not a handler choice.
+/// "Use Arbor instead of Finder to show files" (Settings › 通用).
+///
+/// What macOS allows: the global `NSFileViewer` preference names the app that other apps use when they
+/// "show in Finder" through NSWorkspace (a browser's downloads, Raycast's Show in Finder, Xcode…). That
+/// app is sent an ordinary open event for the item, which Arbor turns into a tab with the item selected.
+///
+/// What it doesn't: opening a folder itself (Spotlight, Raycast, Dock) always goes to Finder. Changing
+/// the folder handler fails with paramErr (-50) through every API, and an entry written into LaunchServices'
+/// handler list is dropped by the system — the same limit QSpace, Path Finder and ForkLift live with.
 @MainActor
 enum DefaultFolderApp {
     static let finderID = "com.apple.finder"
+    static var arborID: String { Bundle.main.bundleIdentifier ?? "app.arbor.Arbor" }
+    private static let fileViewerKey = "NSFileViewer" as CFString
 
-    /// Bundle id of the app that currently opens folders. (Asked of NSWorkspace, which answers with what
-    /// actually happens: Finder doesn't register for folders the usual way, so the lower-level
-    /// LaunchServices query names some other app when Finder is in charge.)
-    static var currentHandler: String? {
-        NSWorkspace.shared.urlForApplication(toOpen: .folder).flatMap { Bundle(url: $0)?.bundleIdentifier }
+    /// The file viewer named in the global preference (QSpace, Path Finder… or Arbor); nil means Finder.
+    static var fileViewer: String? {
+        CFPreferencesCopyValue(fileViewerKey, kCFPreferencesAnyApplication, kCFPreferencesCurrentUser,
+                               kCFPreferencesAnyHost) as? String
     }
 
-    static var isArbor: Bool {
-        currentHandler?.lowercased() == Bundle.main.bundleIdentifier?.lowercased()
+    static var isArbor: Bool { fileViewer?.lowercased() == arborID.lowercased() }
+
+    /// A readable name for the app that shows files for other apps.
+    static var currentName: String {
+        guard let id = fileViewer, id.lowercased() != finderID else { return "访达" }
+        if id.lowercased() == arborID.lowercased() { return "Arbor" }
+        if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) {
+            return FileManager.default.displayName(atPath: url.path).replacingOccurrences(of: ".app", with: "")
+        }
+        return id
     }
 
-    /// Hands folders to Arbor (on) or back to Finder (off). Reports a readable reason if the system said no.
-    static func set(_ arbor: Bool, completion: @escaping (String?) -> Void) {
-        let target = arbor ? (Bundle.main.bundleIdentifier ?? "app.arbor.Arbor") : finderID
-        if arbor {
-            // Make sure LaunchServices knows this copy of Arbor and that it can open folders — after an
-            // in-place update it may still have an older registration on file.
-            LSRegisterURL(Bundle.main.bundleURL as CFURL, true)
-        }
-        // The long-standing LaunchServices call (what other file managers use for folders)…
-        let status = LSSetDefaultRoleHandlerForContentType(UTType.folder.identifier as CFString, .all, target as CFString)
-        if status == noErr, currentHandler?.lowercased() == target.lowercased() {
-            completion(nil)
-            return
-        }
-        // …and the modern one as a fallback.
-        let appURL = arbor ? Bundle.main.bundleURL : URL(fileURLWithPath: "/System/Library/CoreServices/Finder.app")
-        NSWorkspace.shared.setDefaultApplication(at: appURL, toOpen: .folder) { error in
-            DispatchQueue.main.async {
-                MainActor.assumeIsolated {
-                    if currentHandler?.lowercased() == target.lowercased() {
-                        completion(nil)
-                    } else if let error {
-                        completion("系统没有接受这个更改（\(error.localizedDescription)，代码 \(status)）。")
-                    } else {
-                        completion("系统没有接受这个更改（代码 \(status)）。")
-                    }
-                }
-            }
-        }
+    /// Arbor (on) or Finder (off) shows files for other apps. Returns a readable problem, or nil.
+    static func set(_ arbor: Bool) -> String? {
+        CFPreferencesSetValue(fileViewerKey, arbor ? arborID as CFString : nil, kCFPreferencesAnyApplication,
+                              kCFPreferencesCurrentUser, kCFPreferencesAnyHost)
+        let saved = CFPreferencesSynchronize(kCFPreferencesAnyApplication, kCFPreferencesCurrentUser, kCFPreferencesAnyHost)
+        return saved && isArbor == arbor ? nil : "没能写入系统偏好设置。"
     }
 }

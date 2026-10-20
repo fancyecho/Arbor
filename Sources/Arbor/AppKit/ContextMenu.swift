@@ -29,7 +29,7 @@ struct MenuEntry {
 enum ContextMenuBuilder {
     /// Entries that can be switched off in Settings › 右键菜单.
     static let customizable = [
-        "打开方式", "在新标签页中打开", "在另一窗格中打开", "添加到个人收藏", "快速查看",
+        "打开方式", "显示包内容", "在新标签页中打开", "在另一窗格中打开", "添加到个人收藏", "快速查看",
         "复制", "加入暂存架", "拷贝到另一窗格", "移动到另一窗格", "批量重命名…",
         "拷贝路径", "拷贝路径为", "在终端中打开", "在编辑器中打开", "在访达中显示", "显示简介",
         "标签", "工具", "图片", "自定义命令", "新建文件", "导出目录树", "分析空间占用",
@@ -80,6 +80,13 @@ enum ContextMenuBuilder {
         let folder = single.flatMap { $0.isNavigable ? $0.url : TabState.resolvedDirectory($0.url) }
 
         var open: [MenuEntry] = [MenuEntry("打开", symbol: "arrow.up.forward.app") { ws.openSelection(urls) }]
+        // Apps, bundles, libraries… open as one thing; this steps inside instead, like Finder.
+        if let single, single.isPackage {
+            open.append(MenuEntry("显示包内容", symbol: "shippingbox") {
+                ws.activate(ws.panes.first { $0.tabs.contains { $0 === tab } } ?? ws.activePane)
+                tab.navigate(to: single.url)
+            })
+        }
         if includeOpenWith, let single, !single.isNavigable {
             open.append(MenuEntry("打开方式", symbol: "app.badge", children: [openWithEntries(for: single.url, ws: ws, urls: urls)]))
         }

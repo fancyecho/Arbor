@@ -122,40 +122,11 @@ struct SidebarView: View {
     }
 
     /// The window's color. With a saved workspace open, it is that workspace's color (saved as you pick).
+    /// The window's color. Tucked away as a small marker (the current color and a label) until the pointer
+    /// comes near; then the swatches slide open. With a saved workspace open, the color is that workspace's
+    /// (saved as you pick).
     private var tintPicker: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(workspace.openWorkspace.map { "工作区“\($0.name)”的颜色" } ?? "窗口颜色")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .help(workspace.openWorkspace == nil
-                      ? "这个窗口还没有打开已存的工作区，颜色只用于这个窗口。存成工作区后颜色会跟着工作区走。"
-                      : "改变颜色会同时保存到这个工作区；切换到别的工作区时，窗口换成那个工作区的颜色。")
-            HStack(spacing: 7) {
-                ForEach(WorkspaceTint.allCases) { option in
-                    let selected = workspace.tint == option
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.35)) { workspace.setTint(option) }
-                    } label: {
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(option.color.gradient)
-                            .frame(width: 20, height: 20)
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                    .strokeBorder(.white, lineWidth: selected ? 2 : 0)
-                            }
-                            .shadow(color: option.color.opacity(selected ? 0.55 : 0), radius: 4, y: 2)
-                            .scaleEffect(selected ? 1.12 : 1)
-                    }
-                    .buttonStyle(.plain)
-                    .help(option.title)
-                    .accessibilityLabel("颜色：\(option.title)")
-                }
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        TintDrawer(workspace: workspace)
     }
 
     // MARK: Rows
@@ -296,5 +267,80 @@ private struct CapacityHairline: View {
                     .frame(width: max(64 * fullness, 2.5), height: 2.5)
             }
             .help("已用 \(Int((fullness * 100).rounded()))%")
+    }
+}
+
+private struct TintDrawer: View {
+    let workspace: WorkspaceState
+    @State private var open = false
+    @State private var closing: DispatchWorkItem?
+
+    private var title: String { workspace.openWorkspace.map { "工作区“\($0.name)”的颜色" } ?? "窗口颜色" }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 7) {
+                // The marker: the color in use, always visible.
+                RoundedRectangle(cornerRadius: 3.5, style: .continuous)
+                    .fill(workspace.tint.color.gradient)
+                    .frame(width: 11, height: 11)
+                    .shadow(color: workspace.tint.color.opacity(0.5), radius: 3, y: 1)
+                Text(title)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.up")
+                    .font(.system(size: 8.5, weight: .bold))
+                    .foregroundStyle(.tertiary)
+                    .rotationEffect(.degrees(open ? 180 : 0))
+            }
+            .help(workspace.openWorkspace == nil
+                  ? "这个窗口还没有打开已存的工作区，颜色只用于这个窗口。存成工作区后颜色会跟着工作区走。"
+                  : "改变颜色会同时保存到这个工作区；切换到别的工作区时，窗口换成那个工作区的颜色。")
+            if open {
+                HStack(spacing: 7) {
+                    ForEach(WorkspaceTint.allCases) { option in
+                        let selected = workspace.tint == option
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.35)) { workspace.setTint(option) }
+                        } label: {
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(option.color.gradient)
+                                .frame(width: 20, height: 20)
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                        .strokeBorder(.white, lineWidth: selected ? 2 : 0)
+                                }
+                                .shadow(color: option.color.opacity(selected ? 0.55 : 0), radius: 4, y: 2)
+                                .scaleEffect(selected ? 1.12 : 1)
+                        }
+                        .buttonStyle(.plain)
+                        .help(option.title)
+                        .accessibilityLabel("颜色：\(option.title)")
+                    }
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, open ? 12 : 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .onHover { inside in
+            closing?.cancel()
+            if inside {
+                withAnimation(.snappy(duration: 0.25)) { open = true }
+            } else {
+                // A short grace period, so brushing past the edge doesn't snap it shut.
+                let work = DispatchWorkItem { withAnimation(.snappy(duration: 0.25)) { open = false } }
+                closing = work
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: work)
+            }
+        }
+        // Clicking the marker also toggles it (for trackpads where hover is fiddly).
+        .onTapGesture { withAnimation(.snappy(duration: 0.25)) { open.toggle() } }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(title)
     }
 }

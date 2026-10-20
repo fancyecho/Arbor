@@ -110,3 +110,21 @@ final class RenameConflictTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: dir.appendingPathComponent("free").path))
     }
 }
+
+@MainActor
+final class PackageMenuTests: XCTestCase {
+    func testAppsOfferShowPackageContentsAndFoldersDont() throws {
+        let workspace = WorkspaceState()
+        let tab = workspace.activeTab
+        let app = FileItem(url: URL(fileURLWithPath: "/System/Applications/Calculator.app"))
+        XCTAssertTrue(app.isPackage)
+        let entries = ContextMenuBuilder.sections(workspace: workspace, tab: tab, selected: [app]).flatMap { $0 }
+        let entry = try XCTUnwrap(entries.first { $0.title == "显示包内容" })
+        entry.action?()
+        XCTAssertTrue(tab.url.isSameFile(as: app.url), "steps inside the app")
+
+        let folder = FileItem(url: FileManager.default.temporaryDirectory)
+        let folderEntries = ContextMenuBuilder.sections(workspace: workspace, tab: tab, selected: [folder]).flatMap { $0 }
+        XCTAssertNil(folderEntries.first { $0.title == "显示包内容" })
+    }
+}

@@ -12,6 +12,10 @@ struct ArborApp: App {
                 .frame(minHeight: 480)
         }
         .defaultSize(width: 1280, height: 780)
+        // Files and folders sent to Arbor (Dock drops, `open -a`, other apps' "show in file viewer")
+        // go to the app delegate, which opens them as a tab. Left to itself SwiftUI would open a blank
+        // new window for each and drop the file.
+        .handlesExternalEvents(matching: [])
         .windowToolbarStyle(.unified(showsTitle: false))
         .commands { ArborCommands() }
 
