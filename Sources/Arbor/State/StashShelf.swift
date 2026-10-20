@@ -111,10 +111,19 @@ final class StashShelf {
 
     func show() {
         if panel == nil {
-            let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 300, height: 420),
-                                styleMask: [.titled, .closable, .resizable, .utilityWindow, .nonactivatingPanel],
+            let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 320, height: 440),
+                                styleMask: [.titled, .closable, .resizable, .fullSizeContentView, .nonactivatingPanel],
                                 backing: .buffered, defer: false)
+            // Glass all the way to the top, like the main window: no title bar strip, just the close button.
             panel.title = "暂存架"
+            panel.titleVisibility = .hidden
+            panel.titlebarAppearsTransparent = true
+            panel.isMovableByWindowBackground = true
+            panel.standardWindowButton(.miniaturizeButton)?.isHidden = true
+            panel.standardWindowButton(.zoomButton)?.isHidden = true
+            panel.isOpaque = false
+            panel.backgroundColor = .clear
+            panel.minSize = NSSize(width: 280, height: 300)
             panel.isFloatingPanel = true
             panel.level = .floating
             panel.hidesOnDeactivate = false
@@ -146,87 +155,152 @@ struct StashShelfView: View {
     private let shelf = StashShelf.shared
     @State private var dropTargeted = false
 
+    private var tint: Color { WorkspaceRegistry.shared.current?.tint.color ?? WorkspaceTint.indigo.color }
+
     var body: some View {
         VStack(spacing: 0) {
+            header
             if shelf.items.isEmpty {
-                VStack(spacing: 8) {
-                    Image(systemName: "tray.and.arrow.down").font(.system(size: 30)).foregroundStyle(.tertiary)
-                    Text("把文件拖到这里暂存").foregroundStyle(.secondary)
-                    Text("从不同文件夹收集文件，\n再一次性移动、拷贝或移到废纸篓。")
-                        .font(.caption).foregroundStyle(.tertiary).multilineTextAlignment(.center)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                empty
             } else {
-                List {
-                    ForEach(shelf.items, id: \.self) { url in
-                        ShelfRow(url: url)
+                ScrollView {
+                    LazyVStack(spacing: 4) {
+                        ForEach(shelf.items, id: \.self) { url in ShelfRow(url: url) }
                     }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
                 }
-                .listStyle(.inset)
             }
-            Divider()
+            footer
+        }
+        .background { WorkspaceBackdrop(tint: tint).opacity(0.9) }
+        .overlay {
+            if dropTargeted {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(tint, style: StrokeStyle(lineWidth: 2, dash: [7, 5]))
+                    .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(tint.opacity(0.08)))
+                    .padding(8)
+                    .allowsHitTesting(false)
+            }
+        }
+        .animation(.easeOut(duration: 0.15), value: dropTargeted)
+        .environment(\.arborTint, tint)
+        .tint(tint)
+        .dropDestination(for: URL.self) { urls, _ in
+            shelf.add(urls)
+            return true
+        } isTargeted: { dropTargeted = $0 }
+    }
+
+    /// Sits in the transparent title bar, to the right of the close button.
+    private var header: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "tray.full").foregroundStyle(tint)
+            Text("暂存架").font(.system(size: 13, weight: .semibold))
+            if !shelf.items.isEmpty {
+                Text("\(shelf.items.count)")
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .monospacedDigit()
+                    .padding(.horizontal, 6)
+                    .frame(height: 16)
+                    .background(Capsule().fill(tint.opacity(0.18)))
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 28)
+        .padding(.top, 2)
+    }
+
+    private var empty: some View {
+        VStack(spacing: 10) {
+            ZStack {
+                Circle().fill(tint.opacity(0.12)).frame(width: 76, height: 76)
+                Circle().strokeBorder(tint.opacity(0.25), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4])).frame(width: 76, height: 76)
+                Image(systemName: "tray.and.arrow.down").font(.system(size: 28, weight: .medium)).foregroundStyle(tint)
+            }
+            Text("把文件拖到这里").font(.system(size: 13, weight: .semibold))
+            Text("从不同文件夹收集文件，\n再一次性移动、拷贝或移到废纸篓。")
+                .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var footer: some View {
+        VStack(spacing: 8) {
             if !shelf.items.isEmpty {
                 HStack {
                     Text("\(shelf.items.count) 个项目")
                     Spacer()
                     Text(shelf.totalSize.map { "共 \(Format.bytes($0))" } ?? "正在计算大小…").monospacedDigit()
                 }
-                .font(.caption)
+                .font(.system(size: 11))
                 .foregroundStyle(.secondary)
-                .padding(.horizontal, 10)
-                .padding(.top, 6)
             }
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 let target = WorkspaceRegistry.shared.current
-                Button("移动到此处") { shelf.transferAll(to: target?.activeTab.url ?? URL(fileURLWithPath: NSHomeDirectory()), move: true, workspace: target) }
-                Button("拷贝到此处") { shelf.transferAll(to: target?.activeTab.url ?? URL(fileURLWithPath: NSHomeDirectory()), move: false, workspace: target) }
-                Spacer()
+                let here = target?.activeTab.url ?? URL(fileURLWithPath: NSHomeDirectory())
+                Button("移动到此处") { shelf.transferAll(to: here, move: true, workspace: target) }
+                    .buttonStyle(.glassProminentCompact)
+                Button("拷贝到此处") { shelf.transferAll(to: here, move: false, workspace: target) }
+                    .buttonStyle(.glassCompact)
+                Spacer(minLength: 4)
                 Button { shelf.trashAll(workspace: target) } label: { Image(systemName: "trash") }
+                    .buttonStyle(.glassCompact)
                     .help("全部移到废纸篓（可撤销）")
                 Button { shelf.clear() } label: { Image(systemName: "xmark.bin") }
+                    .buttonStyle(.glassCompact)
                     .help("清空暂存架（不会删除文件）")
             }
             .disabled(shelf.items.isEmpty)
-            .controlSize(.small)
-            .padding(8)
             .help("“此处”指最近使用的 Arbor 窗口中当前的文件夹")
         }
-        .overlay {
-            if dropTargeted {
-                RoundedRectangle(cornerRadius: 8).strokeBorder(Color.accentColor, lineWidth: 2).padding(4)
-            }
+        .padding(.horizontal, 12)
+        .padding(.top, 10)
+        .padding(.bottom, 12)
+        .background(alignment: .top) {
+            Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1).padding(.horizontal, 12)
         }
-        .dropDestination(for: URL.self) { urls, _ in
-            shelf.add(urls)
-            return true
-        } isTargeted: { dropTargeted = $0 }
     }
 }
 
+/// One collected item: a small glass card with its icon, name, where it came from and its size.
 private struct ShelfRow: View {
     let url: URL
     @State private var hovering = false
+    @Environment(\.arborTint) private var tint
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(nsImage: NSWorkspace.shared.icon(forFile: url.path)).resizable().frame(width: 28, height: 28)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(url.lastPathComponent).lineLimit(1).truncationMode(.middle)
+        HStack(spacing: 10) {
+            Image(nsImage: NSWorkspace.shared.icon(forFile: url.path)).resizable().frame(width: 30, height: 30)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(url.lastPathComponent).font(.system(size: 12.5, weight: .medium)).lineLimit(1).truncationMode(.middle)
                 Text((url.deletingLastPathComponent().path as NSString).abbreviatingWithTildeInPath)
-                    .font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.head)
+                    .font(.system(size: 10.5)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.head)
             }
             Spacer(minLength: 4)
             if hovering {
-                Button { StashShelf.shared.remove(url) } label: { Image(systemName: "xmark.circle.fill") }
-                    .buttonStyle(.borderless)
-                    .foregroundStyle(.secondary)
+                Button { StashShelf.shared.remove(url) } label: {
+                    Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).frame(width: 18, height: 18)
+                        .background(Circle().fill(Color.primary.opacity(0.08)))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help("移出暂存架")
             } else if let size = StashShelf.shared.sizes[url.path] {
-                Text(Format.bytes(size)).font(.caption).monospacedDigit().foregroundStyle(.secondary)
+                Text(Format.bytes(size)).font(.system(size: 11)).monospacedDigit().foregroundStyle(.secondary)
             }
         }
-        .task(id: url) { await StashShelf.shared.measure(url) }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Glass.card(active: hovering))
+                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(hovering ? tint.opacity(0.35) : Glass.hairline))
+        }
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
+        .animation(.easeOut(duration: 0.12), value: hovering)
+        .task(id: url) { await StashShelf.shared.measure(url) }
         .onDrag { NSItemProvider(object: url as NSURL) }
         .onTapGesture(count: 2) { NSWorkspace.shared.open(url) }
         .contextMenu {

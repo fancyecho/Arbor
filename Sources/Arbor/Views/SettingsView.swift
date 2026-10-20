@@ -16,6 +16,22 @@ struct SettingsView: View {
 
 private struct GeneralSettings: View {
     @Bindable private var settings = AppSettings.shared
+    @State private var opensFolders = DefaultFolderApp.isArbor
+    @State private var folderError: String?
+
+    private var folderFooter: String {
+        if let folderError { return "没能更改：\(folderError)" }
+        return "打开后，从聚焦搜索、其他应用或终端（open 命令）打开的文件夹都会在 Arbor 里显示。桌面、程序坞和“在访达中显示”属于访达本身，仍会打开访达。关闭即恢复由访达打开。"
+    }
+
+    private func setOpensFolders(_ on: Bool) {
+        folderError = nil
+        DefaultFolderApp.set(on) { error in
+            folderError = error?.localizedDescription
+            // Read back what the system actually did (the user may have declined).
+            opensFolders = DefaultFolderApp.isArbor
+        }
+    }
 
     var body: some View {
         Form {
@@ -69,6 +85,13 @@ private struct GeneralSettings: View {
             }
             Section("检查器") {
                 Toggle("自动计算文件夹大小", isOn: $settings.autoFolderSize)
+            }
+            Section {
+                Toggle("用 Arbor 打开文件夹（代替访达）", isOn: Binding(get: { opensFolders }, set: setOpensFolders))
+            } header: {
+                Text("默认文件管理器")
+            } footer: {
+                Text(folderFooter).foregroundStyle(.secondary)
             }
             Section {
                 Toggle("在菜单栏显示 Arbor 图标", isOn: $settings.showMenuBarIcon)

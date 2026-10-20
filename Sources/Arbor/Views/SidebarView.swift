@@ -173,10 +173,16 @@ struct SidebarView: View {
                 }
             Spacer(minLength: 0)
             if place.isEjectable {
-                Button { volumes.eject(place) } label: { Image(systemName: "eject.fill").font(.caption) }
-                    .buttonStyle(.borderless)
-                    .foregroundStyle(.secondary)
-                    .help("推出")
+                if volumes.ejecting.contains(place.url.standardizedFileURL) {
+                    ProgressView().controlSize(.mini).help("正在推出…")
+                } else {
+                    Button { volumes.eject(place) } label: { Image(systemName: "eject.fill").font(.caption) }
+                        .buttonStyle(.borderless)
+                        .foregroundStyle(.secondary)
+                        // Its own gesture wins over the row's tap, so ejecting never opens the disk first.
+                        .highPriorityGesture(TapGesture().onEnded { volumes.eject(place) })
+                        .help("推出")
+                }
             }
         }
         .modifier(SidebarRowStyle(isSelected: isCurrent(place.url)) {

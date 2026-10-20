@@ -79,7 +79,7 @@ final class VolumeList {
     func refresh() {
         let keys: [URLResourceKey] = [.volumeLocalizedNameKey, .volumeIsEjectableKey, .volumeIsRemovableKey,
                                       .volumeIsInternalKey, .volumeIsBrowsableKey, .volumeIsLocalKey,
-                                      .volumeTotalCapacityKey, .volumeAvailableCapacityForImportantUsageKey]
+                                      .volumeTotalCapacityKey, .volumeAvailableCapacityForImportantUsageKey, .volumeIsReadOnlyKey]
         let urls = FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: keys, options: [.skipHiddenVolumes]) ?? []
         volumes = urls.compactMap { url in
             let values = try? url.resourceValues(forKeys: Set(keys))
@@ -89,7 +89,9 @@ final class VolumeList {
             let isInternal = values?.volumeIsInternal ?? true
             let symbol = isNetwork ? "server.rack" : url.path == "/" ? "internaldrive" : (ejectable ? "externaldrive" : (isInternal ? "internaldrive" : "externaldrive.connected.to.line.below"))
             var fullness: Double?
-            if let total = values?.volumeTotalCapacity, total > 0, let free = values?.volumeAvailableCapacityForImportantUsage {
+            // Read-only volumes (disk images, installers) report no free space; a "full" bar would mislead.
+            if values?.volumeIsReadOnly != true,
+               let total = values?.volumeTotalCapacity, total > 0, let free = values?.volumeAvailableCapacityForImportantUsage {
                 fullness = min(max(1 - Double(free) / Double(total), 0), 1)
             }
             return Place(name: values?.volumeLocalizedName ?? url.lastPathComponent, url: url, symbol: symbol,
@@ -97,11 +99,59 @@ final class VolumeList {
         }
     }
 
+    /// Volumes being ejected right now (the sidebar shows a spinner instead of the eject button).
+    private(set) var ejecting: Set<URL> = []
+
+    /// Ejects a disk or disk image without freezing the app. Arbor first lets go of the volume itself —
+    /// tabs showing it move to the home folder, scans of it stop — since a volume Arbor is still looking
+    /// at counts as "in use" and won't unmount.
     func eject(_ place: Place) {
-        do {
-            try NSWorkspace.shared.unmountAndEjectDevice(at: place.url)
-        } catch {
-            NSAlert(error: error).runModal()
+        let volume = place.url.standardizedFileURL
+        guard !ejecting.contains(volume) else { return }
+        ejecting.insert(volume)
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        for workspace in WorkspaceRegistry.shared.workspaces {
+            for pane in workspace.panes {
+                for tab in pane.tabs where Self.isOnVolume(tab.url, volume) {
+                    tab.navigate(to: home)
+                }
+            }
         }
+        for scan in SpaceIndex.shared.scans where scan.covers(volume) { scan.cancel() }
+        QuickLookController.shared.selectionChanged([])
+
+        // Unmounting can take seconds (or fail after a wait): never on the main thread.
+        DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 0.3) {
+            var failure: Error?
+            for attempt in 0..<3 {
+                do {
+                    try NSWorkspace.shared.unmountAndEjectDevice(at: volume)
+                    failure = nil
+                    break
+                } catch {
+                    failure = error
+                    if attempt < 2 { Thread.sleep(forTimeInterval: 0.6) }
+                }
+            }
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    self.ejecting.remove(volume)
+                    self.refresh()
+                    if let failure { Self.reportEjectFailure(failure, name: place.name) }
+                }
+            }
+        }
+    }
+
+    static func isOnVolume(_ url: URL, _ volume: URL) -> Bool {
+        let path = url.standardizedFileURL.path, root = volume.path
+        return path == root || path.hasPrefix(root.hasSuffix("/") ? root : root + "/")
+    }
+
+    private static func reportEjectFailure(_ error: Error, name: String) {
+        let alert = NSAlert()
+        alert.messageText = "无法推出“\(name)”"
+        alert.informativeText = "有其他应用正在使用它。关闭使用其中文件的应用后再试一次。\n\n(\(error.localizedDescription))"
+        alert.runModal()
     }
 }

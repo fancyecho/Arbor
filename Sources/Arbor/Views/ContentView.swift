@@ -217,6 +217,27 @@ struct WorkspaceWindow: View {
                     if ProcessInfo.processInfo.environment["ARBOR_NEW_FILE"] != nil { workspace.newFile() } else { workspace.newFolder() }
                 }
                 return
+            case "eject":
+                // Show the volume at ARBOR_DEMO_DIR in a pane, then eject it from under ourselves.
+                guard let path = ProcessInfo.processInfo.environment["ARBOR_DEMO_DIR"] else { return }
+                let volume = URL(fileURLWithPath: path)
+                workspace.visiblePanes[0].activeTab.navigate(to: volume)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                    print("EJECT start", Date().timeIntervalSince1970)
+                    VolumeList.shared.eject(Place(name: volume.lastPathComponent, url: volume, symbol: "externaldrive", isEjectable: true))
+                    print("EJECT returned", Date().timeIntervalSince1970)
+                }
+                return
+            case "shelf":
+                // A few items from ARBOR_DEMO_DIR on the shelf (or an empty shelf with ARBOR_SHELF_EMPTY).
+                StashShelf.shared.clear()
+                if ProcessInfo.processInfo.environment["ARBOR_SHELF_EMPTY"] == nil,
+                   let path = ProcessInfo.processInfo.environment["ARBOR_DEMO_DIR"],
+                   let names = try? fm.contentsOfDirectory(atPath: path) {
+                    StashShelf.shared.add(names.sorted().prefix(4).map { URL(fileURLWithPath: path).appendingPathComponent($0) })
+                }
+                StashShelf.shared.show()
+                return
             case "narrow":
                 // Three panes and the inspector in a window narrower than they'd like.
                 workspace.setPaneCount(3)

@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>ArborReleaseTag</key>
-	<string>v1.0.0</string>
+	<string>v1.0.1</string>
 	<key>ArborUpdateRepository</key>
 	<string>fancyecho/Arbor</string>
 	<key>CFBundleDevelopmentRegion</key>
@@ -18,10 +18,21 @@
 			<key>CFBundleTypeRole</key>
 			<string>Viewer</string>
 			<key>LSHandlerRank</key>
-			<string>None</string>
+			<string>Alternate</string>
 			<key>LSItemContentTypes</key>
 			<array>
 				<string>public.folder</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Item</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>None</string>
+			<key>LSItemContentTypes</key>
+			<array>
 				<string>public.item</string>
 			</array>
 		</dict>
@@ -39,9 +50,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0.0</string>
+	<string>1.0.1</string>
 	<key>CFBundleVersion</key>
-	<string>5</string>
+	<string>6</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.productivity</string>
 	<key>LSMinimumSystemVersion</key>

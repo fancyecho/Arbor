@@ -86,6 +86,13 @@ extension WorkspaceState {
         moveTab(tab, from: pane, to: visible[(index + 1) % visible.count])
     }
 
+    /// The × on a pane: with two or three panes, closes this one (its tabs come back if you add a pane
+    /// again). The last pane can't be closed.
+    func closePane(_ pane: PaneState) {
+        guard paneCount > 1 else { return }
+        collapse(pane)
+    }
+
     /// Hides a pane by moving it past the visible ones.
     private func collapse(_ pane: PaneState) {
         guard let index = visiblePanes.firstIndex(where: { $0.id == pane.id }) else { return }

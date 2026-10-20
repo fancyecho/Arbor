@@ -54,7 +54,11 @@ struct TabBarView: View {
             .buttonStyle(.borderless)
             .foregroundStyle(.secondary)
             .help("新建标签页 (⌘T)")
-            .padding(.trailing, 8)
+            .padding(.trailing, workspace.paneCount > 1 ? 0 : 8)
+            if workspace.paneCount > 1 {
+                PaneCloseButton { workspace.closePane(pane) }
+                    .padding(.trailing, 6)
+            }
         }
         .padding(.top, 6)
         .frame(height: 38)
@@ -278,4 +282,25 @@ private final class URLCollector: @unchecked Sendable {
     private var storage: [URL] = []
     var urls: [URL] { lock.withLock { storage } }
     func append(_ url: URL) { lock.withLock { storage.append(url) } }
+}
+
+/// Closes a pane when there's more than one: a quiet ×, a soft circle behind it on hover.
+private struct PaneCloseButton: View {
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "xmark")
+                .font(.system(size: 9.5, weight: .bold))
+                .frame(width: 20, height: 20)
+                .background(Circle().fill(Color.primary.opacity(hovering ? 0.09 : 0)))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(hovering ? .secondary : .tertiary)
+        .onHover { hovering = $0 }
+        .animation(.easeOut(duration: 0.12), value: hovering)
+        .help("关闭这个窗格")
+    }
 }

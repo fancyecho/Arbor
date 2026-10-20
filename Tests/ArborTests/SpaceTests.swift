@@ -241,3 +241,28 @@ final class ShelfSizeTests: XCTestCase {
         shelf.clear()
     }
 }
+
+@MainActor
+final class VolumePathTests: XCTestCase {
+    func testOnlyPathsInsideTheVolumeCount() {
+        let volume = URL(fileURLWithPath: "/Volumes/Disk")
+        XCTAssertTrue(VolumeList.isOnVolume(URL(fileURLWithPath: "/Volumes/Disk"), volume))
+        XCTAssertTrue(VolumeList.isOnVolume(URL(fileURLWithPath: "/Volumes/Disk/a/b"), volume))
+        XCTAssertFalse(VolumeList.isOnVolume(URL(fileURLWithPath: "/Volumes/Disk 2/a"), volume), "a sibling with a longer name")
+        XCTAssertFalse(VolumeList.isOnVolume(URL(fileURLWithPath: "/Users/me"), volume))
+    }
+}
+
+@MainActor
+final class ClosePaneTests: XCTestCase {
+    func testClosingAPaneLeavesTheOthersAndNeverTheLast() {
+        let workspace = WorkspaceState()
+        workspace.setPaneCount(2)
+        let first = workspace.visiblePanes[0], second = workspace.visiblePanes[1]
+        workspace.closePane(first)
+        XCTAssertEqual(workspace.paneCount, 1)
+        XCTAssertTrue(workspace.visiblePanes[0] === second, "the other pane stays")
+        workspace.closePane(second)
+        XCTAssertEqual(workspace.paneCount, 1, "the last pane can't be closed")
+    }
+}

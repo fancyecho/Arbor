@@ -209,6 +209,12 @@ final class WorkspaceRegistry {
         return lastActive ?? alive.last?.workspace
     }
 
+    /// Every open window's workspace.
+    var workspaces: [WorkspaceState] {
+        alive.removeAll { $0.workspace == nil }
+        return alive.compactMap(\.workspace)
+    }
+
     func markActive(_ workspace: WorkspaceState) {
         lastActive = workspace
     }

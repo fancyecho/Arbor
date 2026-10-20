@@ -17,8 +17,11 @@ cp "$BIN" "$APP/Contents/MacOS/Arbor"
 cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
 cp "$ROOT/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 
-# Ad-hoc sign so macOS keeps TCC (Documents/Desktop access) decisions stable between builds.
-codesign --force --sign - "$APP" >/dev/null 2>&1 || true
+# Ad-hoc sign with an explicit designated requirement. An ad-hoc signature's default requirement is the
+# build's own hash, so macOS privacy permissions (Desktop, Documents, Full Disk Access…) were tied to one
+# build and asked for again after every update. Requiring only the bundle identifier keeps them.
+codesign --force --sign - --identifier app.arbor.Arbor \
+    -r='designated => identifier "app.arbor.Arbor"' "$APP"
 
 echo "Built $APP"
 
