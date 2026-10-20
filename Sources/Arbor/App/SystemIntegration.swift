@@ -45,6 +45,28 @@ enum AppActions {
         openWindow?(id: "browser")
     }
 
+    /// Quits even while a sheet is open: SwiftUI ignores `terminate` then (the update prompt that appears
+    /// at launch used to make ⌘Q do nothing), so the sheets are closed first.
+    static func quit() {
+        let withSheets = NSApp.windows.filter { !$0.sheets.isEmpty }
+        guard !withSheets.isEmpty else {
+            NSApp.terminate(nil)
+            return
+        }
+        Updater.shared.dismiss()
+        for window in withSheets {
+            for sheet in window.sheets { window.endSheet(sheet) }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            NSApp.terminate(nil)
+        }
+        // A sheet that refuses to go away must not make quitting impossible.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            WorkspaceRegistry.shared.persist()
+            exit(0)
+        }
+    }
+
     /// Global hotkey: show Arbor, or hide it if it's already in front.
     static func toggle() {
         if NSApp.isActive, hasBrowserWindow {
@@ -208,7 +230,7 @@ struct MenuBarContent: View {
         }
         Divider()
         SettingsLink { Text("设置…") }
-        Button("退出 Arbor") { NSApp.terminate(nil) }
+        Button("退出 Arbor") { AppActions.quit() }
             .onAppear { AppActions.openWindow = openWindow }
     }
 }

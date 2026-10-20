@@ -35,7 +35,7 @@ enum Snapshot {
             }
             view.cacheDisplay(in: view.bounds, to: rep)
             try? rep.representation(using: .png, properties: [:])?.write(to: output)
-            NSApp.terminate(nil)
+            MainActor.assumeIsolated { AppActions.quit() }
         }
     }
 }

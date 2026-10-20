@@ -39,6 +39,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if !Snapshot.isActive {
             MainActor.assumeIsolated { AppSettings.shared.applyAppearance() }
         }
+        // Dock › Quit, logout and shutdown arrive as a quit Apple event; route them past open sheets too.
+        NSAppleEventManager.shared().setEventHandler(self, andSelector: #selector(handleQuit(_:reply:)),
+                                                     forEventClass: AEEventClass(kCoreEventClass),
+                                                     andEventID: AEEventID(kAEQuitApplication))
         Snapshot.scheduleIfRequested()
         if !Snapshot.isActive {
             MainActor.assumeIsolated { GlobalHotKey.shared.register(AppSettings.shared.hotKey) }
@@ -46,6 +50,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 MainActor.assumeIsolated { Updater.shared.checkInBackgroundIfDue() }
             }
         }
+    }
+
+    @objc private func handleQuit(_ event: NSAppleEventDescriptor, reply: NSAppleEventDescriptor) {
+        MainActor.assumeIsolated { AppActions.quit() }
     }
 
     /// With the menu bar icon (and its hotkey) Arbor keeps running after the last window closes.
@@ -100,6 +108,11 @@ struct ArborCommands: Commands {
     var body: some Commands {
         CommandGroup(after: .appInfo) {
             Button("检查更新…") { Updater.shared.check(userInitiated: true) }
+        }
+
+        CommandGroup(replacing: .appTermination) {
+            Button("退出 Arbor") { AppActions.quit() }
+                .keyboardShortcut("q")
         }
 
         CommandGroup(after: .newItem) {
