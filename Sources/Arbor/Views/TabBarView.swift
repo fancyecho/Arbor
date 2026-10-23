@@ -20,7 +20,7 @@ struct TabBarView: View {
     var body: some View {
         HStack(spacing: 4) {
             ScrollViewReader { proxy in
-                ScrollView(.horizontal, showsIndicators: false) {
+                ScrollView(.horizontal) {
                     HStack(spacing: 4) {
                         ForEach(pane.tabs) { tab in
                             TabChip(workspace: workspace, pane: pane, tab: tab, isSelected: tab.id == pane.activeTabID)
@@ -30,6 +30,7 @@ struct TabBarView: View {
                     .padding(.horizontal, 6)
                     .animation(.snappy(duration: 0.18), value: pane.tabs.map(\.id))
                 }
+                .scrollIndicators(.hidden)
                 .onChange(of: pane.activeTabID) { _, id in
                     withAnimation { proxy.scrollTo(id) }
                 }
@@ -294,7 +295,7 @@ private struct PaneCloseButton: View {
             Image(systemName: "xmark")
                 .font(.system(size: 9.5, weight: .bold))
                 .frame(width: 20, height: 20)
-                .background(Circle().fill(Color.primary.opacity(hovering ? 0.09 : 0)))
+                .background { Circle().fill(Color.primary.opacity(hovering ? 0.09 : 0)) }
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)

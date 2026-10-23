@@ -96,7 +96,7 @@ struct SyncSheet: View {
             .truncationMode(.middle)
             .frame(maxWidth: .infinity)
             .padding(8)
-            .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.05)))
+            .background { RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.05)) }
             .help(url.path)
     }
 

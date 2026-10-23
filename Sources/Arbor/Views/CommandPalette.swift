@@ -11,6 +11,9 @@ struct CommandPalette: View {
     @State private var results: [PaletteItem] = []
     @FocusState private var focused: Bool
 
+    /// Rows are inset 6pt, so their 12pt corners sit concentric inside this one.
+    private static let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
+
     var body: some View {
         ZStack(alignment: .top) {
             Color.black.opacity(0.12)
@@ -70,8 +73,7 @@ struct CommandPalette: View {
                 .frame(height: 28)
             }
             .frame(width: 620)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.primary.opacity(0.1)))
+            .floatingGlass(in: Self.shape, fallback: .regularMaterial)
             .shadow(color: .black.opacity(0.25), radius: 30, y: 12)
             .padding(.top, 70)
         }
@@ -248,7 +250,7 @@ private struct PaletteRow: View {
         .foregroundStyle(isSelected ? Color.white : .primary)
         .padding(.horizontal, 10)
         .frame(height: item.subtitle == nil ? 32 : 40)
-        .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(isSelected ? tint : .clear))
+        .background { RoundedRectangle(cornerRadius: 12, style: .continuous).fill(isSelected ? tint : .clear) }
         .contentShape(Rectangle())
     }
 }

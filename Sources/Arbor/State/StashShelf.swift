@@ -178,7 +178,7 @@ struct StashShelfView: View {
             if dropTargeted {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .strokeBorder(tint, style: StrokeStyle(lineWidth: 2, dash: [7, 5]))
-                    .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(tint.opacity(0.08)))
+                    .background { RoundedRectangle(cornerRadius: 14, style: .continuous).fill(tint.opacity(0.08)) }
                     .padding(8)
                     .allowsHitTesting(false)
             }
@@ -203,7 +203,7 @@ struct StashShelfView: View {
                     .monospacedDigit()
                     .padding(.horizontal, 6)
                     .frame(height: 16)
-                    .background(Capsule().fill(tint.opacity(0.18)))
+                    .background { Capsule().fill(tint.opacity(0.18)) }
             }
         }
         .frame(maxWidth: .infinity)
@@ -281,7 +281,7 @@ private struct ShelfRow: View {
             if hovering {
                 Button { StashShelf.shared.remove(url) } label: {
                     Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).frame(width: 18, height: 18)
-                        .background(Circle().fill(Color.primary.opacity(0.08)))
+                        .background { Circle().fill(Color.primary.opacity(0.08)) }
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
@@ -294,8 +294,8 @@ private struct ShelfRow: View {
         .padding(.vertical, 7)
         .background {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Glass.card(active: hovering))
-                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(hovering ? tint.opacity(0.35) : Glass.hairline))
+                .fill(Surface.card(active: hovering))
+                .overlay { RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(hovering ? tint.opacity(0.35) : Surface.hairline) }
         }
         .contentShape(Rectangle())
         .onHover { hovering = $0 }

@@ -35,6 +35,15 @@ enum WorkspaceTint: String, Codable, CaseIterable, Identifiable {
     var color: Color { Color(nsColor: nsColor) }
 }
 
+extension Color {
+    /// A workspace color used as text or icon on the sidebar. On dark Liquid Glass, which itself takes on
+    /// the workspace color from the backdrop, the color is lifted toward white so it stays readable.
+    func onSidebarGlass(_ scheme: ColorScheme) -> Color {
+        if #available(macOS 26.0, *), scheme == .dark { return mix(with: .white, by: 0.45) }
+        return self
+    }
+}
+
 private struct ArborTintKey: EnvironmentKey {
     static let defaultValue: Color = WorkspaceTint.indigo.color
 }
@@ -47,8 +56,9 @@ extension EnvironmentValues {
     }
 }
 
-/// Glass surfaces shared by the window: a translucent, blurred backdrop and the floating pane cards.
-enum Glass {
+/// Content-layer surfaces: the floating pane and inspector cards over the blurred backdrop.
+/// (Not `Glass`: that name is SwiftUI's Liquid Glass material, used for controls and the sidebar.)
+enum Surface {
     /// Card fill that reads well over the blurred backdrop in light and dark mode.
     static func card(active: Bool) -> Color {
         Color(nsColor: NSColor(name: nil) { appearance in
@@ -137,10 +147,7 @@ struct GlassSegmented<Value: Hashable>: View {
                     .frame(height: compact ? 22 : 26)
                     .background {
                         if selected {
-                            Capsule()
-                                .fill(tint.opacity(colorScheme == .dark ? 0.3 : 0.17))
-                                .overlay(Capsule().strokeBorder(tint.opacity(colorScheme == .dark ? 0.45 : 0.28), lineWidth: 0.75))
-                                .matchedGeometryEffect(id: "selection", in: namespace)
+                            selectionPill
                         } else if hovered == option.value {
                             Capsule().fill(Color.primary.opacity(0.05))
                         }
@@ -152,23 +159,34 @@ struct GlassSegmented<Value: Hashable>: View {
             }
         }
         .padding(2)
-        .background(Capsule().fill(Color.primary.opacity(colorScheme == .dark ? 0.06 : 0.045)))
-        .overlay(Capsule().strokeBorder(Glass.hairline))
+        .background { Capsule().fill(Color.primary.opacity(colorScheme == .dark ? 0.06 : 0.045)) }
+        .overlay { Capsule().strokeBorder(Surface.hairline) }
         .fixedSize()
+    }
+
+    /// A tinted wash, not glass: the control sits on content cards, and glass would bleach the label on it.
+    private var selectionPill: some View {
+        Capsule()
+            .fill(tint.opacity(colorScheme == .dark ? 0.3 : 0.17))
+            .overlay { Capsule().strokeBorder(tint.opacity(colorScheme == .dark ? 0.45 : 0.28), lineWidth: 0.75) }
+            .matchedGeometryEffect(id: "selection", in: namespace)
     }
 }
 
-/// Glass capsule buttons. `.prominent` is the one main action: the workspace color, softly lit.
-struct GlassButtonStyle: ButtonStyle {
+/// Capsule buttons. Regular ones are real Liquid Glass on macOS 26+ (a hand-drawn approximation before).
+/// `.prominent` is the one main action and stays a solid capsule in the workspace color: tinted glass goes
+/// gray whenever its window isn't key, leaving white text on pale glass.
+/// (Not `GlassButtonStyle`: SwiftUI has its own type by that name.)
+struct CapsuleButtonStyle: ButtonStyle {
     enum Kind { case regular, prominent }
     var kind: Kind = .regular
     var compact = false
 
     func makeBody(configuration: Configuration) -> some View {
-        GlassButtonBody(configuration: configuration, kind: kind, compact: compact)
+        CapsuleButtonBody(configuration: configuration, kind: kind, compact: compact)
     }
 
-    private struct GlassButtonBody: View {
+    private struct CapsuleButtonBody: View {
         let configuration: Configuration
         let kind: Kind
         let compact: Bool
@@ -176,29 +194,39 @@ struct GlassButtonStyle: ButtonStyle {
         @Environment(\.isEnabled) private var isEnabled
         @State private var hovering = false
 
+        private var prominent: Bool { kind == .prominent }
+
         var body: some View {
-            let prominent = kind == .prominent
-            configuration.label
+            let label = configuration.label
                 .labelStyle(.titleAndIcon)
-                .font(.system(size: compact ? 11.5 : 13, weight: .medium))
+                .font(.system(size: compact ? 11.5 : 13, weight: prominent ? .semibold : .medium))
                 .foregroundStyle(prominent ? AnyShapeStyle(Color.white) : AnyShapeStyle(Color.primary))
                 .padding(.horizontal, compact ? 10 : 18)
                 .frame(height: compact ? 24 : 32)
-                .background {
-                    if prominent {
-                        Capsule().fill(tint.gradient).brightness(hovering ? 0.06 : 0)
-                    } else {
-                        Capsule().fill(Color.primary.opacity(hovering ? 0.1 : 0.06))
-                    }
-                }
-                .overlay(Capsule().strokeBorder(prominent ? Color.white.opacity(0.22) : Glass.hairline, lineWidth: 0.75))
-                .shadow(color: prominent ? tint.opacity(0.35) : .clear, radius: 10, y: 4)
                 .contentShape(Capsule())
-                .scaleEffect(configuration.isPressed ? 0.97 : 1)
-                .opacity(isEnabled ? (configuration.isPressed ? 0.85 : 1) : 0.45)
-                .animation(.easeOut(duration: 0.12), value: hovering)
-                .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
-                .onHover { hovering = $0 }
+            if #available(macOS 26.0, *), !prominent {
+                // Interactive glass does its own hover, press and lensing; no drawn fills on top.
+                // Disabled dims the label only: faded glass loses its lensing and turns muddy.
+                label
+                    .opacity(isEnabled ? 1 : 0.45)
+                    .glassEffect(.regular.interactive(), in: Capsule())
+            } else {
+                label
+                    .background {
+                        if prominent {
+                            Capsule().fill(tint.gradient).brightness(hovering ? 0.06 : 0)
+                        } else {
+                            Capsule().fill(Color.primary.opacity(hovering ? 0.1 : 0.06))
+                        }
+                    }
+                    .overlay { Capsule().strokeBorder(prominent ? Color.white.opacity(0.22) : Surface.hairline, lineWidth: 0.75) }
+                    .shadow(color: prominent ? tint.opacity(0.35) : .clear, radius: 10, y: 4)
+                    .scaleEffect(configuration.isPressed ? 0.97 : 1)
+                    .opacity(isEnabled ? (configuration.isPressed ? 0.85 : 1) : 0.45)
+                    .animation(.easeOut(duration: 0.12), value: hovering)
+                    .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
+                    .onHover { hovering = $0 }
+            }
         }
     }
 }
@@ -225,11 +253,26 @@ struct TintLinkStyle: ButtonStyle {
     }
 }
 
-extension ButtonStyle where Self == GlassButtonStyle {
-    static var glass: GlassButtonStyle { GlassButtonStyle() }
-    static var glassCompact: GlassButtonStyle { GlassButtonStyle(compact: true) }
-    static var glassProminent: GlassButtonStyle { GlassButtonStyle(kind: .prominent) }
-    static var glassProminentCompact: GlassButtonStyle { GlassButtonStyle(kind: .prominent, compact: true) }
+extension ButtonStyle where Self == CapsuleButtonStyle {
+    static var glass: CapsuleButtonStyle { CapsuleButtonStyle() }
+    static var glassCompact: CapsuleButtonStyle { CapsuleButtonStyle(compact: true) }
+    static var glassProminent: CapsuleButtonStyle { CapsuleButtonStyle(kind: .prominent) }
+    static var glassProminentCompact: CapsuleButtonStyle { CapsuleButtonStyle(kind: .prominent, compact: true) }
+}
+
+extension View {
+    /// Liquid Glass in `shape` on macOS 26+; on earlier systems, the `fallback` fill and a hairline.
+    /// The glass is a layer behind the view rather than wrapping it: wrapped content gets the glass's
+    /// vibrancy, which bleaches colored text and the list's template icons.
+    @ViewBuilder
+    func floatingGlass(in shape: some Shape, fallback: some ShapeStyle) -> some View {
+        if #available(macOS 26.0, *) {
+            background { Color.clear.glassEffect(.regular, in: shape) }
+        } else {
+            background(fallback, in: shape)
+                .overlay { shape.stroke(Surface.hairline, lineWidth: 1) }
+        }
+    }
 }
 
 extension ButtonStyle where Self == TintLinkStyle {

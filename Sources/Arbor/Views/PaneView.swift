@@ -25,10 +25,17 @@ struct PaneView: View {
         }
         .frame(width: contentWidth, alignment: .leading)
         .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-        .background { Self.shape.fill(Glass.card(active: isActive || workspace.paneCount == 1)) }
+        .background { Self.shape.fill(Surface.card(active: isActive || workspace.paneCount == 1)) }
         .clipShape(Self.shape)
         .overlay {
-            Self.shape.strokeBorder(lifted ? tint : Glass.hairline, lineWidth: lifted ? 1.5 : 1)
+            // Lit from above, like the glass around it: the rim is brightest along the top edge.
+            if lifted {
+                Self.shape.strokeBorder(
+                    LinearGradient(colors: [tint, tint.opacity(0.55)], startPoint: .top, endPoint: .bottom),
+                    lineWidth: 1.5)
+            } else {
+                Self.shape.strokeBorder(Surface.hairline, lineWidth: 1)
+            }
         }
         .shadow(color: .black.opacity(lifted ? 0.22 : 0.08), radius: lifted ? 22 : 8, y: lifted ? 10 : 3)
         .animation(.easeOut(duration: 0.22), value: lifted)

@@ -134,7 +134,7 @@ struct TextPreview: View {
             }
             .frame(height: 300)
             .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
-            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.primary.opacity(0.08)))
+            .overlay { RoundedRectangle(cornerRadius: 8).strokeBorder(Color.primary.opacity(0.08)) }
 
             if let error { Text(error).font(.caption).foregroundStyle(.red) }
         }

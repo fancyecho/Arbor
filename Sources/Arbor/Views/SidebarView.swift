@@ -7,6 +7,7 @@ struct SidebarView: View {
     private let library = WorkspaceLibrary.shared
 
     @Environment(\.arborTint) private var tint
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(spacing: 0) {
@@ -187,7 +188,7 @@ struct SidebarView: View {
                 Text(saved.name).fontWeight(isOpen ? .semibold : .regular)
                 Spacer(minLength: 0)
                 if isOpen {
-                    Text("当前").font(.system(size: 10, weight: .medium)).foregroundStyle(saved.tint.color)
+                    Text("当前").font(.system(size: 10, weight: .medium)).foregroundStyle(saved.tint.color.onSidebarGlass(colorScheme))
                 }
             }
         } icon: {
@@ -232,13 +233,14 @@ private struct SidebarRowStyle: ViewModifier {
     let action: () -> Void
 
     @Environment(\.arborTint) private var tint
+    @Environment(\.colorScheme) private var colorScheme
     @State private var hovering = false
 
     func body(content: Content) -> some View {
         content
             .foregroundStyle(isSelected ? AnyShapeStyle(Color.primary) : AnyShapeStyle(Color.primary.opacity(0.88)))
             .symbolRenderingMode(.monochrome)
-            .tint(isSelected ? tint : Color.secondary)
+            .labelStyle(SidebarIconStyle(color: isSelected ? tint.onSidebarGlass(colorScheme) : Color.secondary))
             .fontWeight(isSelected ? .semibold : .regular)
             .contentShape(Rectangle())
             .onTapGesture(perform: action)
@@ -249,6 +251,20 @@ private struct SidebarRowStyle: ViewModifier {
                     .padding(.horizontal, 10)
                     .animation(.easeOut(duration: 0.12), value: hovering)
             )
+    }
+}
+
+/// Colors the row's icon itself: the selected place in the workspace color, the rest secondary.
+/// (A sidebar list's own icon tinting doesn't carry through onto the Liquid Glass sidebar.)
+private struct SidebarIconStyle: LabelStyle {
+    let color: Color
+
+    func makeBody(configuration: Configuration) -> some View {
+        Label {
+            configuration.title
+        } icon: {
+            configuration.icon.foregroundStyle(color)
+        }
     }
 }
 

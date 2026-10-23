@@ -65,7 +65,7 @@ struct UpdateSheet: View {
                 if release.prerelease {
                     Text("开发预览版").font(.caption2.weight(.semibold))
                         .padding(.horizontal, 6).padding(.vertical, 2)
-                        .background(Capsule().fill(Color.orange.opacity(0.2)))
+                        .background { Capsule().fill(Color.orange.opacity(0.2)) }
                         .foregroundStyle(.orange)
                 }
                 if let date = release.publishedAt { Text("发布于 \(Format.date(date))").font(.caption).foregroundStyle(.secondary) }

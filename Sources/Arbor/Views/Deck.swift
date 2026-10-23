@@ -227,7 +227,7 @@ final class DeckAnimator {
     @ObservationIgnored private var fromOrder: [UUID] = []
     @ObservationIgnored private var fromWidths: [UUID: CGFloat] = [:]
     @ObservationIgnored private var started: CFTimeInterval = 0
-    @ObservationIgnored private var timer: Timer?
+    @ObservationIgnored private var ticker: FrameTicker?
     /// Last window width a frame was computed for (needed to capture the pose when retargeting).
     @ObservationIgnored private var lastWidth: CGFloat = 0
 
@@ -251,7 +251,7 @@ final class DeckAnimator {
         order = Self.merge(order, into: newTarget.panes)
         started = CACurrentMediaTime()
         progress = 0
-        startTimer()
+        startTicking()
     }
 
     /// The frame to draw for a window `width` wide.
@@ -289,13 +289,14 @@ final class DeckAnimator {
         return DeckPose.blend(from, settled, DeckGeometry.ease(time - started))
     }
 
-    private func startTimer() {
-        guard timer == nil else { return }
-        let timer = Timer(timeInterval: 1.0 / 120, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.tick() }
+    private func startTicking() {
+        guard ticker == nil else { return }
+        let ticker = FrameTicker { [weak self] in
+            self?.tick()
+            return self != nil
         }
-        RunLoop.main.add(timer, forMode: .common)
-        self.timer = timer
+        ticker.start()
+        self.ticker = ticker
     }
 
     private func tick() {
@@ -305,8 +306,8 @@ final class DeckAnimator {
             from = nil
             fromWidths = [:]
             if let target { order = target.panes }
-            timer?.invalidate()
-            timer = nil
+            ticker?.stop()
+            ticker = nil
         } else {
             progress = DeckGeometry.ease(elapsed)
         }
@@ -322,6 +323,47 @@ final class DeckAnimator {
             result.insert(id, at: position)
         }
         return result
+    }
+}
+
+/// Calls back once per refresh of the screen the key window is on, in step with what is drawn: a 60 Hz
+/// display gets 60 layouts a second (not the 120 a fixed timer would ask for), ProMotion gets 120 in phase.
+@MainActor
+private final class FrameTicker: NSObject {
+    /// Returns false once its owner is gone, which stops the ticker.
+    private let onFrame: () -> Bool
+    private var link: CADisplayLink?
+    private var timer: Timer?
+
+    init(onFrame: @escaping () -> Bool) {
+        self.onFrame = onFrame
+    }
+
+    func start() {
+        if let screen = NSApp.keyWindow?.screen ?? NSScreen.main {
+            let link = screen.displayLink(target: self, selector: #selector(step))
+            link.add(to: .main, forMode: .common)
+            self.link = link
+        } else {
+            // No screen to sync with (headless); a plain timer still finishes the transition.
+            let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated { self?.step() }
+            }
+            RunLoop.main.add(timer, forMode: .common)
+            self.timer = timer
+        }
+    }
+
+    /// Must be called: the display link keeps its target alive until it is invalidated.
+    func stop() {
+        link?.invalidate()
+        link = nil
+        timer?.invalidate()
+        timer = nil
+    }
+
+    @objc private func step() {
+        if !onFrame() { stop() }
     }
 }
 
@@ -365,13 +407,14 @@ struct DeckView: View {
                 let geometry = frame.geometry
                 ZStack(alignment: .topLeading) {
                     if geometry.sidebarPresence > 0.001 {
+                        // Navigation floats above the content, so the sidebar is Liquid Glass (macOS 26+).
+                        // Only its contents fade while it slides; glass itself isn't meant to be faded.
                         SidebarView(workspace: workspace)
                             .scrollContentBackground(.hidden)
                             .frame(width: DeckGeometry.sidebarWidth, height: height)
-                            .background(Glass.card(active: false), in: Self.shape)
-                            .overlay(Self.shape.strokeBorder(Glass.hairline))
                             .clipShape(Self.shape)
                             .opacity(Double(geometry.sidebarPresence))
+                            .floatingGlass(in: Self.shape, fallback: Surface.card(active: false))
                             .offset(x: geometry.sidebarX)
                     }
                     ForEach(frame.panes) { paneFrame in
@@ -389,8 +432,8 @@ struct DeckView: View {
                     if geometry.inspectorPresence > 0.001 {
                         InspectorView(workspace: workspace)
                             .frame(width: geometry.inspectorWidth, height: height)
-                            .background(Glass.card(active: true), in: Self.shape)
-                            .overlay(Self.shape.strokeBorder(Glass.hairline))
+                            .background(Surface.card(active: true), in: Self.shape)
+                            .overlay { Self.shape.strokeBorder(Surface.hairline) }
                             .clipShape(Self.shape)
                             .shadow(color: .black.opacity(0.08), radius: 8, y: 3)
                             .opacity(Double(geometry.inspectorPresence))

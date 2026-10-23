@@ -208,7 +208,7 @@ private struct GridCell: View {
                     .foregroundStyle(.white)
                     .padding(.horizontal, 5)
                     .padding(.vertical, 1.5)
-                    .background(Capsule().fill(Color(nsColor: mark.color)))
+                    .background { Capsule().fill(Color(nsColor: mark.color)) }
                     .offset(x: -8, y: 2)
             }
         }

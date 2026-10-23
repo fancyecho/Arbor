@@ -368,7 +368,7 @@ private struct CapacityBar: View {
                     }
                     Spacer(minLength: 0)
                 }
-                .background(Capsule().fill(Color.primary.opacity(0.07)))
+                .background { Capsule().fill(Color.primary.opacity(0.07)) }
                 .animation(.easeOut(duration: 0.3), value: scanned)
             }
             .frame(height: 8)
@@ -441,8 +441,8 @@ private struct CenterLabel: View {
             }
             .frame(width: diameter * 0.8)
             .frame(width: diameter, height: diameter)
-            .background(Circle().fill(.ultraThinMaterial))
-            .overlay(Circle().strokeBorder(Glass.hairline))
+            .background { Circle().fill(.ultraThinMaterial) }
+            .overlay { Circle().strokeBorder(Surface.hairline) }
             .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
         }
     }

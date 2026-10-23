@@ -67,7 +67,7 @@ struct FolderCoverView: View {
                 .offset(y: -6)
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(Self.frame)
-                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.primary.opacity(0.08)))
+                .overlay { RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.primary.opacity(0.08)) }
                 .frame(width: width, height: height)
                 .overlay {
                     tiles
