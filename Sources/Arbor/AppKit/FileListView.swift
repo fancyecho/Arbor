@@ -832,6 +832,36 @@ final class FileTableView: NSTableView {
         if row(at: point) < 0 { deselectAll(nil) }
         return super.menu(for: event)
     }
+
+    /// The rows a right-click acts on, while its menu is open: AppKit frames them in a hard white
+    /// rectangle. Here they get the workspace color instead, shaped like the selection wash: a soft
+    /// outline around each run of rows, and a faint wash on a clicked row that isn't selected.
+    /// (AppKit has no public hook for this; if the selector ever changes, its white frame comes back.)
+    @objc(_drawContextualMenuHighlightInClipRect:)
+    private func drawContextMenuTarget(in clipRect: NSRect) {
+        let clicked = clickedRow
+        guard clicked >= 0 else { return }
+        let targets = selectedRowIndexes.contains(clicked) ? selectedRowIndexes : IndexSet(integer: clicked)
+        let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        for run in targets.rangeView {
+            guard let first = run.first, let last = run.last else { continue }
+            let rect = rowFrame(first).union(rowFrame(last)).insetBy(dx: 2.5, dy: 1.5)
+            guard rect.intersects(clipRect) else { continue }
+            let path = NSBezierPath(roundedRect: rect, xRadius: 7, yRadius: 7)
+            if !selectedRowIndexes.contains(clicked) {
+                tint.withAlphaComponent(dark ? 0.14 : 0.07).setFill()
+                path.fill()
+            }
+            tint.withAlphaComponent(dark ? 0.8 : 0.6).setStroke()
+            path.lineWidth = 1.5
+            path.stroke()
+        }
+    }
+
+    /// Where a row's view sits (inset from the table's edges in the inset style), in table coordinates.
+    private func rowFrame(_ row: Int) -> NSRect {
+        rowView(atRow: row, makeIfNecessary: false)?.frame ?? rect(ofRow: row)
+    }
 }
 
 /// The rubber band drawn while drag-selecting.

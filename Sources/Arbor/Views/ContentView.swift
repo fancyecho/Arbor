@@ -296,6 +296,33 @@ struct WorkspaceWindow: View {
                 workspace.visiblePanes[0].activeTab.navigate(to: URL(fileURLWithPath: path))
                 workspace.visiblePanes[0].activeTab.viewMode = .columns
                 return
+            case "contextmenu":
+                // A real right-click on the list of ARBOR_DEMO_DIR, for checking the menu's target highlight:
+                // ARBOR_MENU_SELECT rows selected (default 3), clicked on row ARBOR_MENU_ROW (default 1).
+                guard let path = ProcessInfo.processInfo.environment["ARBOR_DEMO_DIR"] else { return }
+                let env = ProcessInfo.processInfo.environment
+                workspace.visiblePanes[0].activeTab.navigate(to: URL(fileURLWithPath: path))
+                workspace.activate(workspace.visiblePanes[0])
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                    let tab = workspace.visiblePanes[0].activeTab
+                    tab.selection = Set(tab.visibleItems.prefix(env["ARBOR_MENU_SELECT"].flatMap(Int.init) ?? 3).map(\.url))
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        func table(in view: NSView) -> FileTableView? {
+                            (view as? FileTableView) ?? view.subviews.lazy.compactMap(table).first
+                        }
+                        guard let window = NSApp.windows.first(where: \.isVisible), let content = window.contentView,
+                              let list = table(in: content) else { return }
+                        let row = list.rect(ofRow: env["ARBOR_MENU_ROW"].flatMap(Int.init) ?? 1)
+                        let point = list.convert(NSPoint(x: row.minX + 60, y: row.midY), to: nil)
+                        if let click = NSEvent.mouseEvent(with: .rightMouseDown, location: point, modifierFlags: [],
+                                                          timestamp: ProcessInfo.processInfo.systemUptime,
+                                                          windowNumber: window.windowNumber, context: nil,
+                                                          eventNumber: 0, clickCount: 1, pressure: 1) {
+                            list.rightMouseDown(with: click)
+                        }
+                    }
+                }
+                return
             case "narrow":
                 // Three panes and the inspector in a window narrower than they'd like.
                 workspace.setPaneCount(3)
