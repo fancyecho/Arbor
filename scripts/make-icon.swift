@@ -1,181 +1,147 @@
-// Draws the app icon and writes Resources/AppIcon.icns (and a 1024px preview PNG).
-// Usage: swift scripts/make-icon.swift <project root>
+// Draws the app icon as an Icon Composer document (Resources/AppIcon.icon), then renders from it the
+// flat Resources/AppIcon.icns (for macOS 14–25 and builds without Xcode) and Resources/AppIcon-preview.png.
+// Usage: swift scripts/make-icon.swift <project root> [folder for a strip of the small sizes]
+// Needs Xcode (for Icon Composer's ictool). build-app.sh compiles the document with actool.
 //
-// The idea: a three-branched tree ("arbor") on a frosted glass card, a second card behind it, floating over
-// the indigo glass of the window — the app's panes on its tinted backdrop.
-import AppKit
+// The idea: a glass folder with an olive sprig pressed into its front, on the dusk indigo of Arbor's
+// default workspace. One object, the "arbor" as an emblem on it. Flat, frontal shapes; the system's
+// Liquid Glass adds the depth, highlights and shadows, and the dark, clear and tinted looks.
+import Foundation
 
 let root = URL(fileURLWithPath: CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : ".")
-let size: CGFloat = 1024
+let document = root.appendingPathComponent("Resources/AppIcon.icon")
 
-func rgb(_ r: CGFloat, _ g: CGFloat, _ b: CGFloat, _ a: CGFloat = 1) -> NSColor {
-    NSColor(srgbRed: r / 255, green: g / 255, blue: b / 255, alpha: a)
+func n(_ value: Double) -> String { String(format: "%.1f", value) }
+
+// MARK: Folder (1024 canvas, y down)
+
+let folderBack = """
+    <path d="M 196 342 Q 196 300 238 300 L 404 300 Q 434 300 452 322 L 478 352 L 786 352 \
+    Q 828 352 828 394 L 828 778 Q 828 820 786 820 L 238 820 Q 196 820 196 778 Z" fill="url(#g)"/>
+    """
+let folderFront = #"<rect x="176" y="430" width="672" height="410" rx="54" fill="url(#g)"/>"#
+
+// MARK: Sprig, centered on the folder front. MenuBarIcon.swift draws the same sprig for the menu bar.
+
+typealias Point = (x: Double, y: Double)
+let stem: [Point] = [(408, 763), (456, 685), (518, 601), (616, 523)]
+
+/// A point on the stem and the direction it grows there (0° is straight up, positive leans right).
+func onStem(_ t: Double) -> (Point, Double) {
+    let (p0, p1, p2, p3) = (stem[0], stem[1], stem[2], stem[3])
+    let u = 1 - t
+    let x = u * u * u * p0.x + 3 * u * u * t * p1.x + 3 * u * t * t * p2.x + t * t * t * p3.x
+    let y = u * u * u * p0.y + 3 * u * u * t * p1.y + 3 * u * t * t * p2.y + t * t * t * p3.y
+    let dx = 3 * u * u * (p1.x - p0.x) + 6 * u * t * (p2.x - p1.x) + 3 * t * t * (p3.x - p2.x)
+    let dy = 3 * u * u * (p1.y - p0.y) + 6 * u * t * (p2.y - p1.y) + 3 * t * t * (p3.y - p2.y)
+    return ((x, y), atan2(dx, -dy) * 180 / .pi)
 }
 
-func hsb(_ h: CGFloat, _ s: CGFloat, _ b: CGFloat, _ a: CGFloat = 1) -> NSColor {
-    NSColor(hue: h, saturation: s, brightness: b, alpha: a)
+/// An olive leaf from `base` along `heading`: fullest near the stem, tapering to a soft tip.
+func leaf(at base: Point, heading: Double, length l: Double, width w: Double) -> String {
+    let d = "M 0,0 C \(n(w)),\(n(-l * 0.18)) \(n(w * 0.85)),\(n(-l * 0.82)) 0,\(n(-l)) "
+        + "C \(n(-w * 0.85)),\(n(-l * 0.82)) \(n(-w)),\(n(-l * 0.18)) 0,0 Z"
+    return "<g transform=\"translate(\(n(base.x)) \(n(base.y))) rotate(\(n(heading)))\">"
+        + "<path d=\"\(d)\" fill=\"url(#g)\" stroke=\"url(#g)\" stroke-width=\"14\" stroke-linejoin=\"round\"/></g>"
 }
 
-/// The macOS icon shape: a superellipse (continuous corners), not a rounded rectangle.
-func squircle(in rect: NSRect, exponent n: CGFloat = 5) -> NSBezierPath {
-    let path = NSBezierPath()
-    let cx = rect.midX, cy = rect.midY, a = rect.width / 2, b = rect.height / 2
-    let steps = 720
-    for i in 0...steps {
-        let t = CGFloat(i) / CGFloat(steps) * 2 * .pi
-        let c = cos(t), s = sin(t)
-        let x = cx + a * (c < 0 ? -1 : 1) * pow(abs(c), 2 / n)
-        let y = cy + b * (s < 0 ? -1 : 1) * pow(abs(s), 2 / n)
-        if i == 0 { path.move(to: NSPoint(x: x, y: y)) } else { path.line(to: NSPoint(x: x, y: y)) }
-    }
-    path.close()
-    return path
+var sprig = "<path d=\"M \(n(stem[0].x)),\(n(stem[0].y)) C \(n(stem[1].x)),\(n(stem[1].y)) "
+    + "\(n(stem[2].x)),\(n(stem[2].y)) \(n(stem[3].x)),\(n(stem[3].y))\" fill=\"none\" stroke=\"url(#g)\" "
+    + "stroke-width=\"16\" stroke-linecap=\"round\"/>"
+// Leaves alternate sides at the same angle, each a little smaller than the one below; one more at the tip.
+for (index, t) in [0.16, 0.34, 0.52, 0.70].enumerated() {
+    let (point, heading) = onStem(t)
+    let scale = 1 - Double(index) * 0.08
+    sprig += leaf(at: point, heading: heading + (index % 2 == 0 ? -46 : 46), length: 104 * scale, width: 38 * scale)
+}
+let (tip, tipHeading) = onStem(1)
+sprig += leaf(at: tip, heading: tipHeading + 4, length: 82, width: 30)
+
+func svg(_ body: String, top light: String, bottom deep: String) -> String {
+    """
+    <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">\
+    <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">\
+    <stop offset="0" stop-color="\(light)"/><stop offset="1" stop-color="\(deep)"/></linearGradient></defs>\
+    \(body)</svg>
+    """
 }
 
-func withShadow(_ color: NSColor, blur: CGFloat, offset: CGFloat, _ draw: () -> Void) {
-    NSGraphicsContext.saveGraphicsState()
-    let shadow = NSShadow()
-    shadow.shadowColor = color
-    shadow.shadowBlurRadius = blur
-    shadow.shadowOffset = NSSize(width: 0, height: -offset)
-    shadow.set()
-    draw()
-    NSGraphicsContext.restoreGraphicsState()
+let assets = [
+    "back.svg": svg(folderBack, top: "#B9C0FF", bottom: "#8E97F0"),
+    "front.svg": svg(folderFront, top: "#FFFFFF", bottom: "#E4E8FF"),
+    "sprig.svg": svg(sprig, top: "#7279FF", bottom: "#3A3BC0"),
+]
+
+// MARK: Document
+
+func group(_ file: String, translucency: Double, shadow: Double, darkFill: String? = nil) -> [String: Any] {
+    var layer: [String: Any] = ["glass": true, "image-name": file, "name": String(file.dropLast(4))]
+    if let darkFill {
+        layer["fill-specializations"] = [["appearance": "dark", "value": ["solid": darkFill]]]
+    }
+    return ["layers": [layer], "lighting": "individual", "specular": true,
+            "shadow": ["kind": "layer-color", "opacity": shadow],
+            "translucency": ["enabled": translucency > 0, "value": translucency]]
 }
 
-let image = NSImage(size: NSSize(width: size, height: size), flipped: false) { _ in
-    // macOS icon grid: an 824pt body centered in 1024, with room for its shadow.
-    let body = NSRect(x: 100, y: 100, width: 824, height: 824)
-    let shape = squircle(in: body)
-
-    withShadow(NSColor.black.withAlphaComponent(0.32), blur: 26, offset: 12) {
-        rgb(58, 56, 168).setFill()
-        shape.fill()
-    }
-
-    NSGraphicsContext.saveGraphicsState()
-    shape.addClip()
-    // The window's tinted glass: indigo deepening to violet, warm and cool light at opposite corners.
-    NSGradient(colors: [rgb(138, 128, 255), rgb(88, 98, 242), rgb(52, 42, 164)])!.draw(in: body, angle: -62)
-    NSGradient(colors: [rgb(255, 176, 150, 0.55), rgb(255, 176, 150, 0)])!
-        .draw(fromCenter: NSPoint(x: 230, y: 840), radius: 0, toCenter: NSPoint(x: 230, y: 840), radius: 430, options: [])
-    NSGradient(colors: [rgb(110, 228, 210, 0.42), rgb(110, 228, 210, 0)])!
-        .draw(fromCenter: NSPoint(x: 860, y: 200), radius: 0, toCenter: NSPoint(x: 860, y: 200), radius: 400, options: [])
-    // A sheen across the top, like light on glass.
-    NSGradient(colors: [NSColor.white.withAlphaComponent(0.16), NSColor.white.withAlphaComponent(0)])!
-        .draw(in: NSRect(x: 100, y: 620, width: 824, height: 304), angle: -90)
-
-    // Back card: a second pane, frosted.
-    let back = NSRect(x: 226, y: 300, width: 384, height: 474)
-    withShadow(NSColor.black.withAlphaComponent(0.2), blur: 30, offset: 12) {
-        NSColor.white.withAlphaComponent(0.26).setFill()
-        NSBezierPath(roundedRect: back, xRadius: 58, yRadius: 58).fill()
-    }
-    NSColor.white.withAlphaComponent(0.6).setStroke()
-    let backRim = NSBezierPath(roundedRect: back.insetBy(dx: 2, dy: 2), xRadius: 56, yRadius: 56)
-    backRim.lineWidth = 3.5
-    backRim.stroke()
-
-    // Front card: bright glass, lit from above.
-    let front = NSRect(x: 398, y: 226, width: 404, height: 506)
-    let frontPath = NSBezierPath(roundedRect: front, xRadius: 60, yRadius: 60)
-    withShadow(NSColor.black.withAlphaComponent(0.3), blur: 40, offset: 16) {
-        rgb(246, 246, 255).setFill()
-        frontPath.fill()
-    }
-    NSGraphicsContext.saveGraphicsState()
-    frontPath.addClip()
-    NSGradient(colors: [rgb(255, 255, 255), rgb(234, 236, 252)])!.draw(in: front, angle: -90)
-    NSGraphicsContext.restoreGraphicsState()
-    NSColor.white.setStroke()
-    let frontRim = NSBezierPath(roundedRect: front.insetBy(dx: 2, dy: 2), xRadius: 58, yRadius: 58)
-    frontRim.lineWidth = 4
-    frontRim.stroke()
-
-    // The tree: a tapered trunk that forks into three branches, each ending in a fruit.
-    let x = front.midX
-    let inkDark = rgb(64, 72, 214), inkLight = rgb(98, 110, 250)
-    // Trunk, wider at the root with a slight flare, narrowing to the fork.
-    let trunk = NSBezierPath()
-    trunk.move(to: NSPoint(x: x - 34, y: 300))
-    trunk.curve(to: NSPoint(x: x - 17, y: 340), controlPoint1: NSPoint(x: x - 20, y: 302), controlPoint2: NSPoint(x: x - 17, y: 318))
-    trunk.line(to: NSPoint(x: x - 13, y: 476))
-    trunk.line(to: NSPoint(x: x + 13, y: 476))
-    trunk.line(to: NSPoint(x: x + 17, y: 340))
-    trunk.curve(to: NSPoint(x: x + 34, y: 300), controlPoint1: NSPoint(x: x + 17, y: 318), controlPoint2: NSPoint(x: x + 20, y: 302))
-    trunk.close()
-    NSGraphicsContext.saveGraphicsState()
-    trunk.addClip()
-    NSGradient(colors: [inkDark, inkLight])!.draw(in: trunk.bounds, angle: 90)
-    NSGraphicsContext.restoreGraphicsState()
-
-    // Branches: smooth curves from the fork, a little thinner than the trunk.
-    let branches = NSBezierPath()
-    branches.lineWidth = 25
-    branches.lineCapStyle = .round
-    branches.lineJoinStyle = .round
-    branches.move(to: NSPoint(x: x, y: 462))
-    branches.curve(to: NSPoint(x: x - 100, y: 592), controlPoint1: NSPoint(x: x, y: 528), controlPoint2: NSPoint(x: x - 80, y: 536))
-    branches.move(to: NSPoint(x: x, y: 462))
-    branches.curve(to: NSPoint(x: x + 100, y: 592), controlPoint1: NSPoint(x: x, y: 528), controlPoint2: NSPoint(x: x + 80, y: 536))
-    branches.move(to: NSPoint(x: x, y: 450))
-    branches.line(to: NSPoint(x: x, y: 640))
-    inkLight.blended(withFraction: 0.25, of: inkDark)!.setStroke()
-    branches.stroke()
-
-    // Fruits: glossy spheres in the app's colors, each with a soft shadow of its own color.
-    func fruit(_ center: NSPoint, _ light: NSColor, _ dark: NSColor) {
-        let radius: CGFloat = 42
-        let rect = NSRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2)
-        withShadow(dark.withAlphaComponent(0.45), blur: 18, offset: 7) {
-            dark.setFill()
-            NSBezierPath(ovalIn: rect).fill()
-        }
-        NSGradient(colors: [light, dark])!.draw(in: NSBezierPath(ovalIn: rect),
-                                                 relativeCenterPosition: NSPoint(x: -0.35, y: 0.4))
-        // A small specular highlight, upper left.
-        NSColor.white.withAlphaComponent(0.55).setFill()
-        NSBezierPath(ovalIn: NSRect(x: center.x - 22, y: center.y + 8, width: 18, height: 14)).fill()
-    }
-    fruit(NSPoint(x: x - 100, y: 602), rgb(255, 184, 150), rgb(246, 120, 86))
-    fruit(NSPoint(x: x + 100, y: 602), rgb(120, 226, 204), rgb(32, 164, 144))
-    fruit(NSPoint(x: x, y: 656), rgb(132, 144, 255), rgb(66, 76, 226))
-
-    NSGraphicsContext.restoreGraphicsState()
-    return true
-}
+let icon: [String: Any] = [
+    // Dusk indigo: the app's default workspace color, deepened toward the bottom.
+    "fill": ["linear-gradient": ["display-p3:0.290,0.330,0.840,1.000", "display-p3:0.100,0.080,0.330,1.000"]],
+    // Front to back: the sprig pressed into the folder front, the front, the back with its tab.
+    "groups": [
+        group("sprig.svg", translucency: 0, shadow: 0.35),
+        // On the dark background the white front would pick up the background's indigo.
+        group("front.svg", translucency: 0.3, shadow: 0.5, darkFill: "display-p3:0.930,0.945,1.000,1.000"),
+        group("back.svg", translucency: 0.4, shadow: 0.5),
+    ],
+    "supported-platforms": ["circles": ["watchOS"], "squares": "shared"],
+]
 
 let fm = FileManager.default
+try? fm.removeItem(at: document)
+try! fm.createDirectory(at: document.appendingPathComponent("Assets"), withIntermediateDirectories: true)
+for (name, content) in assets {
+    try! content.write(to: document.appendingPathComponent("Assets/\(name)"), atomically: true, encoding: .utf8)
+}
+let json = try! JSONSerialization.data(withJSONObject: icon, options: [.prettyPrinted, .sortedKeys])
+try! json.write(to: document.appendingPathComponent("icon.json"))
+
+// MARK: Renders
+
+@discardableResult
+func run(_ tool: String, _ arguments: [String]) -> String {
+    let pipe = Pipe()
+    let task = Process()
+    task.executableURL = URL(fileURLWithPath: tool)
+    task.arguments = arguments
+    task.standardOutput = pipe
+    try! task.run()
+    let output = pipe.fileHandleForReading.readDataToEndOfFile()
+    task.waitUntilExit()
+    precondition(task.terminationStatus == 0, "\(tool) failed")
+    return String(decoding: output, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+}
+
+let ictool = run("/usr/bin/xcode-select", ["-p"]) + "/../Applications/Icon Composer.app/Contents/Executables/ictool"
+func render(points: Int, scale: Int, to output: URL) {
+    run(ictool, [document.path, "--export-image", "--output-file", output.path, "--platform", "macOS",
+                 "--rendition", "Default", "--width", "\(points)", "--height", "\(points)", "--scale", "\(scale)"])
+}
+
 let iconset = fm.temporaryDirectory.appendingPathComponent("AppIcon.iconset")
 try? fm.removeItem(at: iconset)
 try! fm.createDirectory(at: iconset, withIntermediateDirectories: true)
 for base in [16, 32, 128, 256, 512] {
-    for scale in [1, 2] {
-        let pixels = base * scale
-        let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: pixels, pixelsHigh: pixels, bitsPerSample: 8,
-                                   samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
-                                   bytesPerRow: 0, bitsPerPixel: 0)!
-        NSGraphicsContext.saveGraphicsState()
-        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
-        NSGraphicsContext.current?.imageInterpolation = .high
-        image.draw(in: NSRect(x: 0, y: 0, width: pixels, height: pixels))
-        NSGraphicsContext.restoreGraphicsState()
-        let name = scale == 1 ? "icon_\(base)x\(base).png" : "icon_\(base)x\(base)@2x.png"
-        try! rep.representation(using: .png, properties: [:])!.write(to: iconset.appendingPathComponent(name))
-    }
+    render(points: base, scale: 1, to: iconset.appendingPathComponent("icon_\(base)x\(base).png"))
+    render(points: base, scale: 2, to: iconset.appendingPathComponent("icon_\(base)x\(base)@2x.png"))
 }
-let output = root.appendingPathComponent("Resources/AppIcon.icns")
-let task = Process()
-task.executableURL = URL(fileURLWithPath: "/usr/bin/iconutil")
-task.arguments = ["-c", "icns", iconset.path, "-o", output.path]
-try! task.run()
-task.waitUntilExit()
+run("/usr/bin/iconutil", ["-c", "icns", iconset.path, "-o", root.appendingPathComponent("Resources/AppIcon.icns").path])
 let preview = root.appendingPathComponent("Resources/AppIcon-preview.png")
 try? fm.removeItem(at: preview)
-try? fm.copyItem(at: iconset.appendingPathComponent("icon_512x512@2x.png"), to: preview)
+try! fm.copyItem(at: iconset.appendingPathComponent("icon_512x512@2x.png"), to: preview)
 // A strip of the small sizes, to check the icon still reads in the Dock and in Finder lists.
 if CommandLine.arguments.count > 2 {
     try? fm.removeItem(atPath: CommandLine.arguments[2])
     try? fm.copyItem(at: iconset, to: URL(fileURLWithPath: CommandLine.arguments[2]))
 }
-print(task.terminationStatus == 0 ? "wrote \(output.path)" : "iconutil failed")
+print("wrote \(document.path), AppIcon.icns and AppIcon-preview.png")

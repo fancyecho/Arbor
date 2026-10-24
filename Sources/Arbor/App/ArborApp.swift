@@ -27,10 +27,12 @@ struct ArborApp: App {
             SettingsView()
         }
 
-        MenuBarExtra("Arbor", systemImage: "tree", isInserted: Binding(
+        MenuBarExtra(isInserted: Binding(
             get: { AppSettings.shared.showMenuBarIcon },
             set: { AppSettings.shared.showMenuBarIcon = $0 })) {
             MenuBarContent()
+        } label: {
+            Image(nsImage: MenuBarIcon.image)
         }
     }
 }
