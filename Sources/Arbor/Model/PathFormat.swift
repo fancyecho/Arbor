@@ -8,14 +8,14 @@ enum PathStyle: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .path: "完整路径"
-        case .tilde: "以 ~ 开头的路径"
-        case .quoted: "带引号的路径"
-        case .escaped: "终端转义路径"
-        case .name: "文件名"
-        case .stem: "文件名（不含扩展名）"
-        case .parent: "所在文件夹路径"
-        case .fileURL: "file:// 链接"
+        case .path: L("完整路径")
+        case .tilde: L("以 ~ 开头的路径")
+        case .quoted: L("带引号的路径")
+        case .escaped: L("终端转义路径")
+        case .name: L("文件名")
+        case .stem: L("文件名（不含扩展名）")
+        case .parent: L("所在文件夹路径")
+        case .fileURL: L("file:// 链接")
         }
     }
 

@@ -6,10 +6,10 @@ enum ViewMode: String, CaseIterable {
 
     var title: String {
         switch self {
-        case .list: "列表"
-        case .grid: "图标"
-        case .columns: "分栏"
-        case .space: "空间"
+        case .list: L("列表")
+        case .grid: L("图标")
+        case .columns: L("分栏")
+        case .space: L("空间")
         }
     }
 
@@ -88,7 +88,7 @@ final class TabState: Identifiable {
     // MARK: Derived
 
     var title: String {
-        if let tagQuery { return "标签：\(tagQuery)" }
+        if let tagQuery { return L("标签：\(tagQuery)") }
         return url.path == "/" ? (volumeName ?? "/") : FileManager.default.displayName(atPath: url.path)
     }
 
@@ -329,7 +329,7 @@ final class TabState: Identifiable {
     private static func describe(_ error: Error, url: URL) -> String {
         let nsError = error as NSError
         if nsError.domain == NSCocoaErrorDomain, nsError.code == NSFileReadNoPermissionError {
-            return "没有权限查看“\(url.lastPathComponent)”的内容。\n可在「系统设置 › 隐私与安全性 › 完全磁盘访问权限」中为 Arbor 授权。"
+            return L("没有权限查看“\(url.lastPathComponent)”的内容。\n可在「系统设置 › 隐私与安全性 › 完全磁盘访问权限」中为 Arbor 授权。")
         }
         return error.localizedDescription
     }

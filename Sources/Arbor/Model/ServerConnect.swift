@@ -38,13 +38,13 @@ enum ServerConnect {
     private static func error(for status: Int32, url: URL) -> Error {
         let reason: String
         switch status {
-        case ECANCELED, -128: reason = "已取消连接。"
-        case ENOENT: reason = "找不到这个共享。"
-        case EAUTH, EACCES, EPERM: reason = "用户名或密码不正确。"
-        case ETIMEDOUT, EHOSTUNREACH, ENETUNREACH, EHOSTDOWN: reason = "无法访问服务器，请检查地址和网络。"
-        default: reason = "错误代码 \(status)。"
+        case ECANCELED, -128: reason = L("已取消连接。")
+        case ENOENT: reason = L("找不到这个共享。")
+        case EAUTH, EACCES, EPERM: reason = L("用户名或密码不正确。")
+        case ETIMEDOUT, EHOSTUNREACH, ENETUNREACH, EHOSTDOWN: reason = L("无法访问服务器，请检查地址和网络。")
+        default: reason = L("错误代码 \(status)。")
         }
         return NSError(domain: NSPOSIXErrorDomain, code: Int(status),
-                       userInfo: [NSLocalizedDescriptionKey: "无法连接到“\(url.host ?? url.absoluteString)”：\(reason)"])
+                       userInfo: [NSLocalizedDescriptionKey: L("无法连接到“\(url.host ?? url.absoluteString)”：\(reason)")])
     }
 }

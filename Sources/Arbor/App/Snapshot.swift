@@ -13,7 +13,7 @@ enum Snapshot {
         let output = URL(fileURLWithPath: args[index + 1])
         if args.contains("--dark") { NSApp.appearance = NSAppearance(named: .darkAqua) }
         if args.contains("--light") { NSApp.appearance = NSAppearance(named: .aqua) }
-        for scene in ["demo", "palette", "compare", "sync", "text", "photos", "stress", "narrow", "toggles", "space", "newfolder", "eject", "shelf", "columnsempty", "update", "update-install"] where args.contains("--" + scene) {
+        for scene in ["demo", "palette", "compare", "sync", "text", "photos", "stress", "narrow", "toggles", "space", "newfolder", "eject", "shelf", "columnsempty", "update", "update-install", "marquee", "settings"] where args.contains("--" + scene) {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
                 NotificationCenter.default.post(name: demoRequest, object: scene)
             }
@@ -26,7 +26,10 @@ enum Snapshot {
 
         let delay = args.firstIndex(of: "--delay").flatMap { args.indices.contains($0 + 1) ? Double(args[$0 + 1]) : nil } ?? 3
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-            guard let window = NSApp.windows.first(where: { $0.isVisible && $0.contentView != nil && $0.className.contains("AppKitWindow") })
+            let settings = args.contains("--settings")
+                ? NSApp.windows.first(where: { $0.isVisible && $0.identifier?.rawValue.contains("Settings") == true }) : nil
+            guard let window = settings
+                    ?? NSApp.windows.first(where: { $0.isVisible && $0.contentView != nil && $0.className.contains("AppKitWindow") })
                     ?? NSApp.windows.first(where: \.isVisible),
                   let view = window.contentView?.superview ?? window.contentView,
                   let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {

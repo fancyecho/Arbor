@@ -34,17 +34,17 @@ final class FileTask: Identifiable {
 
     var detail: String {
         switch state {
-        case .finished: return "已完成"
-        case .cancelled: return "已停止"
+        case .finished: return L("已完成")
+        case .cancelled: return L("已停止")
         case .failed(let message): return message
         case .running:
-            guard progress.totalBytes > 0 else { return "\(progress.itemsDone) / \(progress.itemsTotal) 项" }
+            guard progress.totalBytes > 0 else { return L("\(progress.itemsDone) / \(progress.itemsTotal) 项") }
             var text = "\(Format.bytes(progress.completedBytes)) / \(Format.bytes(progress.totalBytes))"
             let elapsed = Date().timeIntervalSince(started)
             if elapsed > 2, progress.completedBytes > 0 {
                 let rate = Double(progress.completedBytes) / elapsed
                 let remaining = Double(progress.totalBytes - progress.completedBytes) / rate
-                text += " · 剩余约 \(Self.duration(remaining))"
+                text += L(" · 剩余约 \(Self.duration(remaining))")
             }
             return text
         }
@@ -53,9 +53,9 @@ final class FileTask: Identifiable {
     func cancel() { cancelFlag.cancel() }
 
     private static func duration(_ seconds: Double) -> String {
-        if seconds < 60 { return "\(max(1, Int(seconds))) 秒" }
-        if seconds < 3600 { return "\(Int(seconds / 60)) 分钟" }
-        return String(format: "%.1f 小时", seconds / 3600)
+        if seconds < 60 { return L("\(max(1, Int(seconds))) 秒") }
+        if seconds < 3600 { return L("\(Int(seconds / 60)) 分钟") }
+        return String(format: L("%.1f 小时"), seconds / 3600)
     }
 }
 
@@ -112,7 +112,7 @@ final class FileOperationQueue {
         NSWorkspace.shared.recycle(urls) { trashed, error in
             Task { @MainActor in
                 let steps = trashed.map { UndoStep.move(from: $0.value, to: $0.key) }
-                FileHistory.shared.record("移到废纸篓", steps: steps)
+                FileHistory.shared.record(L("移到废纸篓"), steps: steps)
                 completion(error)
             }
         }
@@ -131,8 +131,8 @@ final class FileOperationQueue {
                        policy: ConflictChoice? = nil) {
         guard !sources.isEmpty else { return }
         let folder = FileManager.default.displayName(atPath: destination.path)
-        let what = sources.count == 1 ? "“\(sources[0].lastPathComponent)”" : "\(sources.count) 个项目"
-        let title = kind == .duplicate ? "复制\(what)" : "\(kind.verb)\(what)到“\(folder)”"
+        let what = sources.count == 1 ? "“\(sources[0].lastPathComponent)”" : L("\(sources.count) 个项目")
+        let title = kind == .duplicate ? L("复制\(what)") : L("\(kind.verb)\(what)到“\(folder)”")
         let task = FileTask(kind: kind, title: title, destination: destination)
         tasks.append(task)
 
@@ -147,7 +147,7 @@ final class FileOperationQueue {
         Task.detached(priority: .userInitiated) {
             let result = await engine.run()
             await MainActor.run {
-                FileHistory.shared.record(kind == .duplicate ? "复制\(what)" : "\(kind.verb)\(what)", steps: result.undoSteps)
+                FileHistory.shared.record(kind == .duplicate ? L("复制\(what)") : L("\(kind.verb)\(what)"), steps: result.undoSteps)
                 if let error = result.error {
                     task.state = .failed(error.localizedDescription)
                 } else {

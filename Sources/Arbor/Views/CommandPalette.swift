@@ -25,7 +25,7 @@ struct CommandPalette: View {
                     Image(systemName: isPathQuery ? "folder" : "magnifyingglass")
                         .font(.system(size: 17))
                         .foregroundStyle(.secondary)
-                    TextField("输入命令、文件夹名称或路径（支持拼音）", text: $query)
+                    TextField(L("输入命令、文件夹名称或路径（支持拼音）"), text: $query)
                         .textFieldStyle(.plain)
                         .font(.system(size: 18))
                         .focused($focused)
@@ -60,12 +60,12 @@ struct CommandPalette: View {
 
                 Divider()
                 HStack(spacing: 14) {
-                    hint("↩", "执行 / 前往")
-                    hint("⌘↩", "新标签页")
-                    hint("⌥↩", "另一窗格")
-                    hint("⇥", "补全路径")
+                    hint("↩", L("执行 / 前往"))
+                    hint("⌘↩", L("新标签页"))
+                    hint("⌥↩", L("另一窗格"))
+                    hint("⇥", L("补全路径"))
                     Spacer()
-                    hint("esc", "关闭")
+                    hint("esc", L("关闭"))
                 }
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
@@ -157,7 +157,7 @@ struct CommandPalette: View {
         if FileManager.default.fileExists(atPath: expanded, isDirectory: &isDirectory) {
             let url = URL(fileURLWithPath: expanded)
             items.append(PaletteItem(id: "go:" + expanded, kind: .path,
-                                     title: isDirectory.boolValue ? "前往“\(url.lastPathComponent)”" : "显示“\(url.lastPathComponent)”",
+                                     title: isDirectory.boolValue ? L("前往“\(url.lastPathComponent)”") : L("显示“\(url.lastPathComponent)”"),
                                      subtitle: (expanded as NSString).abbreviatingWithTildeInPath,
                                      symbol: "arrow.right.circle", score: 2, url: isDirectory.boolValue ? url : nil) {
                 workspace.go(to: url)

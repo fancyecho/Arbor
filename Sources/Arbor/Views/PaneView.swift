@@ -88,21 +88,21 @@ struct TabContentView: View {
         .overlay {
             if let message = tab.errorMessage {
                 ContentUnavailableView {
-                    Label("无法打开文件夹", systemImage: "lock.fill")
+                    Label(L("无法打开文件夹"), systemImage: "lock.fill")
                 } description: {
                     Text(message)
                 } actions: {
-                    Button("返回") { tab.goBack() }.disabled(!tab.canGoBack).buttonStyle(.glass)
+                    Button(L("返回")) { tab.goBack() }.disabled(!tab.canGoBack).buttonStyle(.glass)
                 }
             } else if tab.isLoading || (tab.isSearching && items.isEmpty) {
                 ProgressView().controlSize(.small)
             } else if items.isEmpty, tab.viewMode != .columns || tab.isSearchMode {
                 // (The column view shows this inside its own column, not across all of them.)
                 VStack(spacing: 6) {
-                    Text(tab.filter.isEmpty ? "文件夹为空" : "没有匹配“\(tab.filter)”的项目")
+                    Text(tab.filter.isEmpty ? L("文件夹为空") : L("没有匹配“\(tab.filter)”的项目"))
                     let hidden = tab.items.filter(\.isHidden).count
                     if tab.filter.isEmpty, hidden > 0, !AppSettings.shared.showHidden {
-                        Button("显示 \(hidden) 个隐藏项目") { AppSettings.shared.showHidden = true }
+                        Button(L("显示 \(hidden) 个隐藏项目")) { AppSettings.shared.showHidden = true }
                             .buttonStyle(.tintLink)
                             .font(.caption)
                     }
@@ -132,25 +132,27 @@ struct StatusBarView: View {
         let selected = visible.filter { tab.selection.contains($0.url) }
         HStack(spacing: 6) {
             if selected.isEmpty {
-                Text("\(visible.count) 项")
+                Text(L("\(visible.count) 项"))
             } else {
-                Text("已选 \(selected.count) / \(visible.count) 项").foregroundStyle(tint)
+                Text(L("已选 \(selected.count) / \(visible.count) 项")).foregroundStyle(tint)
                 let bytes = selected.compactMap(\.size).reduce(0, +)
                 if bytes > 0 { Text("·  \(Format.bytes(bytes))") }
             }
             if tab.isSearchMode {
-                Text("·  \(tab.searchScope == .spotlight ? "Spotlight" : "子文件夹")搜索\(tab.isSearching ? "中…" : tab.searchTruncated ? "（仅显示前 \(RecursiveSearch.resultLimit) 项）" : "")")
+                let search = tab.searchScope == .spotlight ? L("Spotlight 搜索") : L("子文件夹搜索")
+                Text("·  " + (tab.isSearching ? L("\(search)中…")
+                              : tab.searchTruncated ? L("\(search)（仅显示前 \(RecursiveSearch.resultLimit) 项）") : search))
                     .foregroundStyle(tint)
                 if tab.isSearching { ProgressView().controlSize(.mini) }
             } else if !tab.filter.isEmpty {
-                Text("·  已过滤").foregroundStyle(tint)
+                Text(L("·  已过滤")).foregroundStyle(tint)
             }
             Spacer(minLength: 8)
             if let freeSpace {
                 // Narrow panes drop the label, then the figure, instead of truncating it to "可用 73.…".
                 ViewThatFits {
-                    Text("可用 \(Format.bytes(freeSpace))")
-                    Text(Format.bytes(freeSpace)).help("可用空间")
+                    Text(L("可用 \(Format.bytes(freeSpace))"))
+                    Text(Format.bytes(freeSpace)).help(L("可用空间"))
                     Color.clear.frame(width: 0)
                 }
                 .lineLimit(1)

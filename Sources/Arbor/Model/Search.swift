@@ -7,9 +7,9 @@ enum SearchScope: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .folder: "当前文件夹"
-        case .subfolders: "包含子文件夹"
-        case .spotlight: "整台 Mac（Spotlight）"
+        case .folder: L("当前文件夹")
+        case .subfolders: L("包含子文件夹")
+        case .spotlight: L("整台 Mac（Spotlight）")
         }
     }
 }
@@ -108,21 +108,21 @@ struct SelectionCondition: Equatable {
     enum Kind: String, CaseIterable, Identifiable {
         case any, files, folders
         var id: Self { self }
-        var title: String { ["any": "全部", "files": "仅文件", "folders": "仅文件夹"][rawValue]! }
+        var title: String { ["any": L("全部"), "files": L("仅文件"), "folders": L("仅文件夹")][rawValue]! }
     }
 
     enum Age: String, CaseIterable, Identifiable {
         case any, today, week, month, older
         var id: Self { self }
         var title: String {
-            ["any": "不限", "today": "今天", "week": "最近 7 天", "month": "最近 30 天", "older": "30 天以前"][rawValue]!
+            ["any": L("不限"), "today": L("今天"), "week": L("最近 7 天"), "month": L("最近 30 天"), "older": L("30 天以前")][rawValue]!
         }
     }
 
     enum SizeRule: String, CaseIterable, Identifiable {
         case any, larger, smaller
         var id: Self { self }
-        var title: String { ["any": "不限", "larger": "大于", "smaller": "小于"][rawValue]! }
+        var title: String { ["any": L("不限"), "larger": L("大于"), "smaller": L("小于")][rawValue]! }
     }
 
     var pattern = ""

@@ -74,26 +74,26 @@ private struct SingleItemInfo: View {
             Divider()
 
             Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
-                row("大小") {
+                row(L("大小")) {
                     if item.isNavigable {
                         if let folderSize {
                             Text(Format.bytes(folderSize))
                         } else if computing {
-                            HStack(spacing: 6) { ProgressView().controlSize(.mini); Text("正在计算…") }
+                            HStack(spacing: 6) { ProgressView().controlSize(.mini); Text(L("正在计算…")) }
                         } else {
-                            Button("计算") { Task { await computeSize() } }
+                            Button(L("计算")) { Task { await computeSize() } }
                                 .buttonStyle(.tintLink)
                         }
                     } else {
                         Text(Format.bytes(item.size))
                     }
                 }
-                row("创建时间") { Text(Format.date(item.created)) }
-                row("修改时间") { Text(Format.date(item.modified)) }
+                row(L("创建时间")) { Text(Format.date(item.created)) }
+                row(L("修改时间")) { Text(Format.date(item.modified)) }
                 if !item.tagNames.isEmpty {
-                    row("标签") { Text(item.tagNames.joined(separator: "、")) }
+                    row(L("标签")) { Text(item.tagNames.joined(separator: L("、"))) }
                 }
-                row("位置") {
+                row(L("位置")) {
                     Text((item.url.deletingLastPathComponent().path as NSString).abbreviatingWithTildeInPath)
                         .textSelection(.enabled)
                         .lineLimit(4)
@@ -102,8 +102,8 @@ private struct SingleItemInfo: View {
             .font(.system(size: 12))
 
             HStack(spacing: 8) {
-                Button("拷贝路径", systemImage: "link") { FileOperations.copyPaths([item.url]) }
-                Button("在访达中显示", systemImage: "macwindow") { FileOperations.revealInFinder([item.url]) }
+                Button(L("拷贝路径"), systemImage: "link") { FileOperations.copyPaths([item.url]) }
+                Button(L("在访达中显示"), systemImage: "macwindow") { FileOperations.revealInFinder([item.url]) }
             }
             .buttonStyle(.glassCompact)
         }
@@ -151,16 +151,16 @@ private struct MultiSelectionInfo: View {
             }
             .frame(height: 160)
 
-            Text("\(items.count) 个项目").font(.headline)
+            Text(L("\(items.count) 个项目")).font(.headline)
             let folders = items.filter(\.isNavigable).count
-            Text("\(items.count - folders) 个文件，\(folders) 个文件夹")
+            Text(L("\(items.count - folders) 个文件，\(folders) 个文件夹"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
             Divider()
 
             HStack {
-                Text("总大小").foregroundStyle(.secondary)
+                Text(L("总大小")).foregroundStyle(.secondary)
                 Spacer()
                 if let total { Text(Format.bytes(total)) } else { ProgressView().controlSize(.mini) }
             }

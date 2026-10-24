@@ -18,6 +18,7 @@ struct WorkspaceWindow: View {
     @Bindable var workspace: WorkspaceState
     @Environment(\.controlActiveState) private var controlActiveState
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
     @State private var windowWidth: CGFloat = 0
 
     var body: some View {
@@ -36,6 +37,14 @@ struct WorkspaceWindow: View {
     private var minimumWidth: CGFloat {
         WindowLayout.minimumWidth(panes: workspace.visiblePanes.count, sidebar: workspace.showSidebar,
                                   inspector: workspace.showInspector)
+    }
+
+    /// The first file list in a view tree (snapshot scenes).
+    static func firstTable(in view: NSView?) -> FileTableView? {
+        guard let view else { return nil }
+        if let table = view as? FileTableView { return table }
+        for subview in view.subviews { if let table = firstTable(in: subview) { return table } }
+        return nil
     }
 
     /// On a screen too small for everything that's switched on, the inspector gives way, then panes.
@@ -103,6 +112,9 @@ struct WorkspaceWindow: View {
                 return
             case "sync":
                 workspace.showSync = true
+                return
+            case "settings":
+                openSettings()
                 return
             case "update", "update-install":
                 // Checks GitHub for real; with ARBOR_FAKE_CURRENT_TAG set lower, the latest release is offered.
@@ -198,6 +210,46 @@ struct WorkspaceWindow: View {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 4.5) { workspace.visiblePanes[0].activeTab.goBack() }
                 }
                 return
+            case "marquee":
+                // Drag-selects in ARBOR_DEMO_DIR with synthetic mouse events sent to this window only (the real
+                // pointer stays put): from the date column of row 1 down to row 4, or across the icon grid (ARBOR_GRID).
+                guard let path = ProcessInfo.processInfo.environment["ARBOR_DEMO_DIR"] else { return }
+                let tab = workspace.visiblePanes[0].activeTab
+                tab.navigate(to: URL(fileURLWithPath: path))
+                let grid = ProcessInfo.processInfo.environment["ARBOR_GRID"] != nil
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                    guard let window = NSApp.windows.first(where: { $0.isVisible && $0.contentView != nil }),
+                          let table = Self.firstTable(in: window.contentView) else { return }
+                    let start: NSPoint, end: NSPoint
+                    if grid {
+                        // The grid replaces the list in the same place: start in its 12 pt margin, top left.
+                        let frame = table.enclosingScrollView!.convert(table.enclosingScrollView!.bounds, to: nil)
+                        start = NSPoint(x: frame.minX + 5, y: frame.maxY - 5)
+                        end = NSPoint(x: frame.minX + 250, y: frame.maxY - 150)
+                        tab.viewMode = .grid
+                    } else {
+                        let first = table.rect(ofRow: 1), last = table.rect(ofRow: 4)
+                        start = table.convert(NSPoint(x: first.maxX - 40, y: first.midY), to: nil)
+                        end = ProcessInfo.processInfo.environment["ARBOR_CLICK"] != nil
+                            ? start : table.convert(NSPoint(x: last.maxX - 120, y: last.midY), to: nil)
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + (grid ? 1 : 0)) {
+                        func post(_ type: NSEvent.EventType, _ point: NSPoint) {
+                            NSApp.postEvent(NSEvent.mouseEvent(with: type, location: point, modifierFlags: [],
+                                                               timestamp: ProcessInfo.processInfo.systemUptime,
+                                                               windowNumber: window.windowNumber, context: nil, eventNumber: 0,
+                                                               clickCount: 1, pressure: 1)!, atStart: false)
+                        }
+                        post(.leftMouseDown, start)
+                        for step in 1...12 {
+                            let t = CGFloat(step) / 12
+                            post(.leftMouseDragged, NSPoint(x: start.x + (end.x - start.x) * t, y: start.y + (end.y - start.y) * t))
+                        }
+                        // Leave the rectangle up for the snapshot unless asked to finish.
+                        if ProcessInfo.processInfo.environment["ARBOR_RELEASE"] != nil { post(.leftMouseUp, end) }
+                    }
+                }
+                return
             case "newfolder":
                 // New folder in ARBOR_DEMO_DIR, the way the context menu does it, for checking inline naming.
                 guard let path = ProcessInfo.processInfo.environment["ARBOR_DEMO_DIR"] else { return }
@@ -208,7 +260,7 @@ struct WorkspaceWindow: View {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
                         let menu = NSMenu()
                         ContextMenuBuilder.build(into: menu, workspace: workspace, tab: workspace.activeTab, selected: [])
-                        if let index = menu.items.firstIndex(where: { $0.title == "新建文件夹" }) { menu.performActionForItem(at: index) }
+                        if let index = menu.items.firstIndex(where: { $0.title == L("新建文件夹") }) { menu.performActionForItem(at: index) }
                     }
                     return
                 }
@@ -263,8 +315,8 @@ struct WorkspaceWindow: View {
                 workspace.visiblePanes[0].activeTab.viewMode = .grid
                 workspace.visiblePanes[1].activeTab.navigate(to: folder)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                    workspace.visiblePanes[0].activeTab.selection = [folder.appendingPathComponent("岚山-日落.jpg")]
-                    workspace.visiblePanes[1].activeTab.selection = [folder.appendingPathComponent("旅行视频.mov")]
+                    workspace.visiblePanes[0].activeTab.selection = [folder.appendingPathComponent(L("岚山-日落.jpg"))]
+                    workspace.visiblePanes[1].activeTab.selection = [folder.appendingPathComponent(L("旅行视频.mov"))]
                     workspace.showInspector = true
                     workspace.activate(workspace.visiblePanes[0])
                 }
@@ -293,16 +345,16 @@ struct WorkspaceWindow: View {
             pane.newTab(url: fm.urls(for: .documentDirectory, in: .userDomainMask)[0])
             pane.newTab(url: URL(fileURLWithPath: "/Applications"))
             for path in ["/Applications/Utilities", "/Library/Fonts"] { SidebarStore.shared.visit(URL(fileURLWithPath: path)) }
-            workspace.saveWorkspace(named: "写论文")
-            workspace.saveWorkspace(named: "整理照片")
+            workspace.saveWorkspace(named: L("写论文"))
+            workspace.saveWorkspace(named: L("整理照片"))
         }
         .onReceive(NotificationCenter.default.publisher(for: Snapshot.gridRequest)) { note in
             workspace.setViewMode(ViewMode(rawValue: note.object as? String ?? "") ?? .grid)
             workspace.activeTab.selection = Set(workspace.activeTab.visibleItems.prefix(1).map(\.url))
             workspace.showInspector = true
         }
-        .alert("无法完成操作", isPresented: alertBinding) {
-            Button("好") {
+        .alert(L("无法完成操作"), isPresented: alertBinding) {
+            Button(L("好")) {
                 workspace.alertMessage = nil
                 if let pending = workspace.renameAfterAlert {
                     workspace.renameAfterAlert = nil
@@ -321,46 +373,46 @@ struct WorkspaceWindow: View {
     private var toolbar: some CustomizableToolbarContent {
         let tab = workspace.activeTab
         ToolbarItem(id: "sidebar", placement: .navigation) {
-            Button { workspace.showSidebar.toggle() } label: { Label("侧边栏", systemImage: "sidebar.leading") }
-                .help("显示 / 隐藏侧边栏 (⌃⌘B)")
+            Button { workspace.showSidebar.toggle() } label: { Label(L("侧边栏"), systemImage: "sidebar.leading") }
+                .help(L("显示 / 隐藏侧边栏 (⌃⌘B)"))
         }
         ToolbarItem(id: "nav", placement: .navigation) {
             ControlGroup {
-                Button { workspace.goBack() } label: { Label("返回", systemImage: "chevron.left") }
+                Button { workspace.goBack() } label: { Label(L("返回"), systemImage: "chevron.left") }
                     .disabled(!tab.canGoBack)
-                    .help("返回 (⌘[)")
-                Button { workspace.goForward() } label: { Label("前进", systemImage: "chevron.right") }
+                    .help(L("返回 (⌘[)"))
+                Button { workspace.goForward() } label: { Label(L("前进"), systemImage: "chevron.right") }
                     .disabled(!tab.canGoForward)
-                    .help("前进 (⌘])")
+                    .help(L("前进 (⌘])"))
             }
             .controlGroupStyle(.navigation)
         }
         ToolbarItem(id: "up", placement: .navigation) {
-            Button { workspace.goUp() } label: { Label("上层文件夹", systemImage: "arrow.up") }
+            Button { workspace.goUp() } label: { Label(L("上层文件夹"), systemImage: "arrow.up") }
                 .disabled(!tab.canGoUp)
-                .help("上层文件夹 (⌘↑)")
+                .help(L("上层文件夹 (⌘↑)"))
         }
 
         ToolbarItem(id: "panes", placement: .principal) {
-            Picker("窗格", selection: Binding(get: { workspace.paneCount }, set: { workspace.setPaneCount($0) })) {
-                Label("单窗格", systemImage: "rectangle").tag(1)
-                Label("双窗格", systemImage: "rectangle.split.2x1").tag(2)
-                Label("三窗格", systemImage: "rectangle.split.3x1.fill").tag(3)
+            Picker(L("窗格"), selection: Binding(get: { workspace.paneCount }, set: { workspace.setPaneCount($0) })) {
+                Label(L("单窗格"), systemImage: "rectangle").tag(1)
+                Label(L("双窗格"), systemImage: "rectangle.split.2x1").tag(2)
+                Label(L("三窗格"), systemImage: "rectangle.split.3x1.fill").tag(3)
             }
             .pickerStyle(.segmented)
             .labelStyle(.iconOnly)
-            .help("窗格布局 (⌃⌘1 / 2 / 3)")
+            .help(L("窗格布局 (⌃⌘1 / 2 / 3)"))
         }
 
         ToolbarItem(id: "view", placement: .principal) {
-            Picker("视图", selection: Binding(get: { workspace.activeTab.viewMode }, set: { workspace.setViewMode($0) })) {
+            Picker(L("视图"), selection: Binding(get: { workspace.activeTab.viewMode }, set: { workspace.setViewMode($0) })) {
                 ForEach(ViewMode.allCases, id: \.self) { mode in
                     Label(mode.title, systemImage: mode.symbol).tag(mode)
                 }
             }
             .pickerStyle(.segmented)
             .labelStyle(.iconOnly)
-            .help("视图 (⌘1 / ⌘2 / ⌘3 / ⌘4)")
+            .help(L("视图 (⌘1 / ⌘2 / ⌘3 / ⌘4)"))
         }
 
         ToolbarItem(id: "operations", placement: .primaryAction) { OperationsButton() }
@@ -370,37 +422,37 @@ struct WorkspaceWindow: View {
     private var optionalToolbar: some CustomizableToolbarContent {
 
         ToolbarItem(id: "palette", placement: .primaryAction, showsByDefault: false) {
-            button("命令面板", "command", "⌘K") { workspace.showPalette.toggle() }
+            button(L("命令面板"), "command", "⌘K") { workspace.showPalette.toggle() }
         }
         ToolbarItem(id: "newFolder", placement: .primaryAction, showsByDefault: false) {
-            button("新建文件夹", "folder.badge.plus", "⇧⌘N") { workspace.newFolder() }
+            button(L("新建文件夹"), "folder.badge.plus", "⇧⌘N") { workspace.newFolder() }
         }
         ToolbarItem(id: "trash", placement: .primaryAction, showsByDefault: false) {
-            button("移到废纸篓", "trash", "⌘⌫") { workspace.moveToTrash() }
+            button(L("移到废纸篓"), "trash", "⌘⌫") { workspace.moveToTrash() }
         }
         ToolbarItem(id: "copyPath", placement: .primaryAction, showsByDefault: false) {
-            button("拷贝路径", "link", "⌥⌘C") { workspace.copyPath() }
+            button(L("拷贝路径"), "link", "⌥⌘C") { workspace.copyPath() }
         }
         ToolbarItem(id: "terminal", placement: .primaryAction, showsByDefault: false) {
-            button("终端", "terminal", "⌥⌘T") { workspace.openInTerminal() }
+            button(L("终端"), "terminal", "⌥⌘T") { workspace.openInTerminal() }
         }
         ToolbarItem(id: "editor", placement: .primaryAction, showsByDefault: false) {
             button(AppSettings.shared.editorName, "chevron.left.forwardslash.chevron.right", "⌥⌘E") { workspace.openInEditor() }
         }
         ToolbarItem(id: "compare", placement: .primaryAction, showsByDefault: false) {
-            button("对比窗格", "arrow.left.arrow.right.square", "⌃⌘C") { workspace.comparePanes() }
+            button(L("对比窗格"), "arrow.left.arrow.right.square", "⌃⌘C") { workspace.comparePanes() }
         }
         ToolbarItem(id: "sync", placement: .primaryAction, showsByDefault: false) {
-            button("同步文件夹", "arrow.triangle.2.circlepath", "⌃⌘Y") {
+            button(L("同步文件夹"), "arrow.triangle.2.circlepath", "⌃⌘Y") {
                 if workspace.otherPane == nil { workspace.setPaneCount(2) }
                 workspace.showSync = true
             }
         }
         ToolbarItem(id: "server", placement: .primaryAction, showsByDefault: false) {
-            button("连接服务器", "server.rack", "⇧⌘K") { workspace.showConnectServer = true }
+            button(L("连接服务器"), "server.rack", "⇧⌘K") { workspace.showConnectServer = true }
         }
         ToolbarItem(id: "reload", placement: .primaryAction, showsByDefault: false) {
-            button("刷新", "arrow.clockwise", "⌘R") { workspace.activeTab.reload() }
+            button(L("刷新"), "arrow.clockwise", "⌘R") { workspace.activeTab.reload() }
         }
 
     }
@@ -408,37 +460,37 @@ struct WorkspaceWindow: View {
     @ToolbarContentBuilder
     private var trailingToolbar: some CustomizableToolbarContent {
         ToolbarItem(id: "shelf", placement: .primaryAction) {
-            button("暂存架", StashShelf.shared.items.isEmpty ? "tray" : "tray.full", "⌥⌘S") { StashShelf.shared.toggle() }
+            button(L("暂存架"), StashShelf.shared.items.isEmpty ? "tray" : "tray.full", "⌥⌘S") { StashShelf.shared.toggle() }
         }
 
         ToolbarItem(id: "actions", placement: .primaryAction) {
             Menu {
-                Button("新建文件夹", systemImage: "folder.badge.plus") { workspace.newFolder() }
-                Menu("从模板新建", systemImage: "doc.badge.plus") {
+                Button(L("新建文件夹"), systemImage: "folder.badge.plus") { workspace.newFolder() }
+                Menu(L("从模板新建"), systemImage: "doc.badge.plus") {
                     ForEach(Templates.all, id: \.self) { template in
                         Button(template.deletingPathExtension().lastPathComponent) { workspace.newFile(from: template) }
                     }
                 }
                 Divider()
-                Button("批量重命名…", systemImage: "character.cursor.ibeam") { workspace.batchRename() }
-                Button("在终端中打开", systemImage: "terminal") { workspace.openInTerminal() }
-                Button("拷贝当前路径", systemImage: "link") { workspace.copyPath([workspace.activeTab.url]) }
-                Button("连接服务器…", systemImage: "server.rack") { workspace.showConnectServer = true }
+                Button(L("批量重命名…"), systemImage: "character.cursor.ibeam") { workspace.batchRename() }
+                Button(L("在终端中打开"), systemImage: "terminal") { workspace.openInTerminal() }
+                Button(L("拷贝当前路径"), systemImage: "link") { workspace.copyPath([workspace.activeTab.url]) }
+                Button(L("连接服务器…"), systemImage: "server.rack") { workspace.showConnectServer = true }
             } label: {
-                Label("新建与操作", systemImage: "plus")
+                Label(L("新建与操作"), systemImage: "plus")
             }
-            .help("新建与操作")
+            .help(L("新建与操作"))
         }
 
         ToolbarItem(id: "hidden", placement: .primaryAction) {
             Toggle(isOn: Binding(get: { AppSettings.shared.showHidden }, set: { AppSettings.shared.showHidden = $0 })) {
-                Label("隐藏文件", systemImage: AppSettings.shared.showHidden ? "eye" : "eye.slash")
+                Label(L("隐藏文件"), systemImage: AppSettings.shared.showHidden ? "eye" : "eye.slash")
             }
-            .help("显示隐藏文件 (⇧⌘.)")
+            .help(L("显示隐藏文件 (⇧⌘.)"))
         }
 
         ToolbarItem(id: "inspector", placement: .primaryAction) {
-            button("检查器", "sidebar.trailing", "⌥⌘I") { workspace.showInspector.toggle() }
+            button(L("检查器"), "sidebar.trailing", "⌥⌘I") { workspace.showInspector.toggle() }
         }
     }
 
@@ -459,9 +511,9 @@ struct WorkspaceWindow: View {
 
     private var searchPrompt: String {
         switch workspace.activeTab.searchScope {
-        case .folder: "过滤当前文件夹"
-        case .subfolders: "搜索“\(workspace.activeTab.title)”及子文件夹"
-        case .spotlight: "用 Spotlight 搜索名称和内容"
+        case .folder: L("过滤当前文件夹")
+        case .subfolders: L("搜索“\(workspace.activeTab.title)”及子文件夹")
+        case .spotlight: L("用 Spotlight 搜索名称和内容")
         }
     }
 

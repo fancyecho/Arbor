@@ -12,19 +12,19 @@ struct SelectByConditionView: View {
         let matches = tab.visibleItems.filter { condition.matches($0) }
 
         VStack(alignment: .leading, spacing: 14) {
-            Text("按条件选择").font(.headline)
+            Text(L("按条件选择")).font(.headline)
             Form {
-                TextField("名称", text: $condition.pattern, prompt: Text("包含的文字，或通配符如 *.jpg、IMG_????"))
-                Toggle("使用正则表达式", isOn: $condition.useRegex)
-                Picker("类型", selection: $condition.kind) {
+                TextField(L("名称"), text: $condition.pattern, prompt: Text(L("包含的文字，或通配符如 *.jpg、IMG_????")))
+                Toggle(L("使用正则表达式"), isOn: $condition.useRegex)
+                Picker(L("类型"), selection: $condition.kind) {
                     ForEach(SelectionCondition.Kind.allCases) { Text($0.title).tag($0) }
                 }
                 .pickerStyle(.segmented)
-                Picker("修改时间", selection: $condition.age) {
+                Picker(L("修改时间"), selection: $condition.age) {
                     ForEach(SelectionCondition.Age.allCases) { Text($0.title).tag($0) }
                 }
                 HStack {
-                    Picker("大小", selection: $condition.sizeRule) {
+                    Picker(L("大小"), selection: $condition.sizeRule) {
                         ForEach(SelectionCondition.SizeRule.allCases) { Text($0.title).tag($0) }
                     }
                     if condition.sizeRule != .any {
@@ -34,13 +34,13 @@ struct SelectByConditionView: View {
                         Text("MB")
                     }
                 }
-                Toggle("添加到当前选择", isOn: $condition.addToSelection)
+                Toggle(L("添加到当前选择"), isOn: $condition.addToSelection)
             }
             HStack {
-                Text("匹配 \(matches.count) / \(tab.visibleItems.count) 项").foregroundStyle(.secondary)
+                Text(L("匹配 \(matches.count) / \(tab.visibleItems.count) 项")).foregroundStyle(.secondary)
                 Spacer()
-                Button("取消", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
-                Button("选择") {
+                Button(L("取消"), role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
+                Button(L("选择")) {
                     let urls = Set(matches.map(\.url))
                     tab.selection = condition.addToSelection ? tab.selection.union(urls) : urls
                     workspace.focusToken += 1

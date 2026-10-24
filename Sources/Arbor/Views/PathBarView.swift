@@ -12,7 +12,7 @@ struct PathBarView: View {
     var body: some View {
         HStack(spacing: 0) {
             if isEditing {
-                TextField("输入路径，例如 ~/Downloads", text: $draft)
+                TextField(L("输入路径，例如 ~/Downloads"), text: $draft)
                     .textFieldStyle(.plain)
                     .font(.system(size: 12, design: .monospaced))
                     .focused($fieldFocused)
@@ -53,7 +53,7 @@ struct PathBarView: View {
             Button(action: beginEditing) { Image(systemName: "pencil.line") }
                 .buttonStyle(.borderless)
                 .foregroundStyle(.tertiary)
-                .help("编辑路径")
+                .help(L("编辑路径"))
                 .padding(.trailing, 8)
         }
     }
@@ -101,11 +101,11 @@ struct PathBarView: View {
             workspace.focusToken += 1
         }
         .contextMenu {
-            Button("在新标签页中打开", systemImage: "plus.square.on.square") { workspace.openInNewTab(part.url) }
-            Button("在另一窗格中打开", systemImage: "rectangle.split.2x1") { workspace.openInOtherPane(part.url) }
+            Button(L("在新标签页中打开"), systemImage: "plus.square.on.square") { workspace.openInNewTab(part.url) }
+            Button(L("在另一窗格中打开"), systemImage: "rectangle.split.2x1") { workspace.openInOtherPane(part.url) }
             Divider()
-            Button("拷贝路径", systemImage: "link") { workspace.copyPath([part.url]) }
-            Button("在终端中打开", systemImage: "terminal") { workspace.openInTerminal(part.url) }
+            Button(L("拷贝路径"), systemImage: "link") { workspace.copyPath([part.url]) }
+            Button(L("在终端中打开"), systemImage: "terminal") { workspace.openInTerminal(part.url) }
         }
     }
 
@@ -119,7 +119,7 @@ struct PathBarView: View {
         let path = (draft.trimmingCharacters(in: .whitespacesAndNewlines) as NSString).expandingTildeInPath
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) else {
-            workspace.alertMessage = "找不到路径“\(draft)”。"
+            workspace.alertMessage = L("找不到路径“\(draft)”。")
             return
         }
         isEditing = false

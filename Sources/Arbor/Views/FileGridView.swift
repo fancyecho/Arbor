@@ -9,6 +9,12 @@ struct FileGridView: View {
     let isActive: Bool
 
     @State private var anchor: URL?
+    /// Drag-selecting: where the rectangle started and where the pointer is, in the grid's coordinates.
+    @State private var marquee: (start: CGPoint, end: CGPoint)?
+    /// The selection the rectangle adds to (⌘/⇧ held) and whether this drag began on a file (then it isn't ours).
+    @State private var marqueeBase: Set<URL> = []
+    @State private var dragBeganOnItem = false
+    @State private var frames = CellFrames()
     @State private var width: CGFloat = 600
     @FocusState private var focused: Bool
 
@@ -35,6 +41,7 @@ struct FileGridView: View {
                                 focused = true
                             })
                         .id(item.url)
+                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.space)) } action: { frames.byURL[item.url] = $0 }
                         .gesture(TapGesture(count: 2).onEnded {
                             workspace.activate(pane)
                             workspace.openSelection([item.url])
@@ -58,6 +65,12 @@ struct FileGridView: View {
                 }
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                // Blank space below the files takes part in drag-selecting too.
+                .frame(minHeight: geometry.size.height, alignment: .top)
+                .contentShape(Rectangle())
+                .coordinateSpace(name: Self.space)
+                .gesture(marqueeGesture)
+                .overlay(alignment: .topLeading) { marqueeRectangle }
                 .slimScrollers(tint)
             }
             .onChange(of: tab.pendingScrollAnchor, initial: true) { _, _ in applyPendingAnchor(proxy) }
@@ -112,6 +125,53 @@ struct FileGridView: View {
 
     // MARK: Selection
 
+    private static let space = "FileGrid"
+
+    /// Like Finder: dragging from blank space draws a rectangle that selects every file it touches.
+    /// ⌘ toggles the files it touches, ⇧ adds them; a drag that starts on a file moves the file instead.
+    private var marqueeGesture: some Gesture {
+        DragGesture(minimumDistance: 3, coordinateSpace: .named(Self.space))
+            .onChanged { value in
+                if marquee == nil, !dragBeganOnItem {
+                    if items.contains(where: { frames.byURL[$0.url]?.contains(value.startLocation) ?? false }) {
+                        dragBeganOnItem = true
+                        return
+                    }
+                    workspace.activate(pane)
+                    focused = true
+                    let flags = NSEvent.modifierFlags
+                    marqueeBase = flags.contains(.command) || flags.contains(.shift) ? tab.selection : []
+                }
+                guard !dragBeganOnItem else { return }
+                marquee = (value.startLocation, value.location)
+                let rect = marqueeRect(value.startLocation, value.location)
+                let touched = Set(items.lazy.filter { frames.byURL[$0.url]?.intersects(rect) ?? false }.map(\.url))
+                let selection = NSEvent.modifierFlags.contains(.command)
+                    ? marqueeBase.symmetricDifference(touched) : marqueeBase.union(touched)
+                if selection != tab.selection { tab.selection = selection }
+            }
+            .onEnded { _ in
+                marquee = nil
+                dragBeganOnItem = false
+            }
+    }
+
+    @ViewBuilder private var marqueeRectangle: some View {
+        if let marquee {
+            let rect = marqueeRect(marquee.start, marquee.end)
+            Rectangle()
+                .fill(tint.opacity(0.12))
+                .overlay { Rectangle().strokeBorder(tint.opacity(0.55), lineWidth: 1) }
+                .frame(width: rect.width, height: rect.height)
+                .offset(x: rect.minX, y: rect.minY)
+                .allowsHitTesting(false)
+        }
+    }
+
+    private func marqueeRect(_ a: CGPoint, _ b: CGPoint) -> CGRect {
+        CGRect(x: min(a.x, b.x), y: min(a.y, b.y), width: abs(a.x - b.x), height: abs(a.y - b.y))
+    }
+
     private func click(_ item: FileItem) {
         workspace.activate(pane)
         focused = true
@@ -140,6 +200,11 @@ struct FileGridView: View {
     private func menuTargets(for item: FileItem) -> [FileItem] {
         tab.selection.contains(item.url) ? items.filter { tab.selection.contains($0.url) } : [item]
     }
+}
+
+/// Where each cell sits in the grid, updated as cells lay out. A plain object: storing a frame mustn't redraw the grid.
+private final class CellFrames {
+    var byURL: [URL: CGRect] = [:]
 }
 
 // MARK: - Cell

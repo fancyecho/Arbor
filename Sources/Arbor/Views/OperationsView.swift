@@ -23,7 +23,7 @@ struct OperationsButton: View {
                 }
                 .frame(width: 16, height: 16)
             }
-            .help(queue.activeCount > 0 ? "\(queue.activeCount) 个操作进行中" : "文件操作")
+            .help(queue.activeCount > 0 ? L("\(queue.activeCount) 个操作进行中") : L("文件操作"))
             .popover(isPresented: $showing, arrowEdge: .bottom) {
                 OperationsList(queue: queue)
             }
@@ -37,10 +37,10 @@ private struct OperationsList: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text("文件操作").font(.headline)
+                Text(L("文件操作")).font(.headline)
                 Spacer()
                 if queue.tasks.contains(where: { $0.state != .running }) {
-                    Button("清除已完成") { queue.clearFinished() }
+                    Button(L("清除已完成")) { queue.clearFinished() }
                         .buttonStyle(.tintLink)
                         .font(.caption)
                 }
@@ -49,7 +49,7 @@ private struct OperationsList: View {
             .padding(.bottom, 8)
 
             if queue.tasks.isEmpty {
-                Text("没有进行中的操作")
+                Text(L("没有进行中的操作"))
                     .foregroundStyle(.secondary)
                     .padding(14)
             } else {
@@ -104,7 +104,7 @@ private struct TaskRow: View {
                 Button { task.cancel() } label: { Image(systemName: "xmark.circle.fill") }
                     .buttonStyle(.borderless)
                     .foregroundStyle(.secondary)
-                    .help("停止")
+                    .help(L("停止"))
             }
         }
     }

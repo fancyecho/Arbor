@@ -134,7 +134,7 @@ extension WorkspaceState {
         guard newName != url.lastPathComponent else { return true }
         do {
             let renamed = try FileOperations.rename(url, to: newName)
-            FileHistory.shared.record("重命名", steps: [.move(from: renamed, to: url)])
+            FileHistory.shared.record(L("重命名"), steps: [.move(from: renamed, to: url)])
             tab.reload(selecting: [renamed])
             return true
         } catch {
@@ -148,7 +148,7 @@ extension WorkspaceState {
         let tab = activeTab
         do {
             let folder = try FileOperations.newFolder(in: tab.url)
-            FileHistory.shared.record("新建文件夹", steps: [.trash(folder)])
+            FileHistory.shared.record(L("新建文件夹"), steps: [.trash(folder)])
             tab.reload(selecting: [folder])
             tab.renamingURL = folder
         } catch {
@@ -160,7 +160,7 @@ extension WorkspaceState {
         let tab = activeTab
         do {
             let file = try FileOperations.newFile(in: tab.url)
-            FileHistory.shared.record("新建文件", steps: [.trash(file)])
+            FileHistory.shared.record(L("新建文件"), steps: [.trash(file)])
             tab.reload(selecting: [file])
             tab.renamingURL = file
         } catch {

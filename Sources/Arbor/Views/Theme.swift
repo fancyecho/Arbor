@@ -10,13 +10,13 @@ enum WorkspaceTint: String, Codable, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .indigo: "靛蓝"
-        case .coral: "珊瑚"
-        case .teal: "青绿"
-        case .violet: "紫罗兰"
-        case .amber: "琥珀"
-        case .rose: "玫瑰"
-        case .graphite: "石墨"
+        case .indigo: L("靛蓝")
+        case .coral: L("珊瑚")
+        case .teal: L("青绿")
+        case .violet: L("紫罗兰")
+        case .amber: L("琥珀")
+        case .rose: L("玫瑰")
+        case .graphite: L("石墨")
         }
     }
 

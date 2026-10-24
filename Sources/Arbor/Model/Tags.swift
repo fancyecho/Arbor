@@ -59,7 +59,7 @@ struct ColorRule: Codable, Hashable, Identifiable {
         case red, orange, yellow, green, blue, purple, gray
         var id: Self { self }
         var title: String {
-            ["red": "红色", "orange": "橙色", "yellow": "黄色", "green": "绿色", "blue": "蓝色", "purple": "紫色", "gray": "灰色"][rawValue]!
+            ["red": L("红色"), "orange": L("橙色"), "yellow": L("黄色"), "green": L("绿色"), "blue": L("蓝色"), "purple": L("紫色"), "gray": L("灰色")][rawValue]!
         }
         var color: NSColor {
             switch self {

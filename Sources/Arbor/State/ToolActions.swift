@@ -7,7 +7,7 @@ extension WorkspaceState {
         let tab = activeTab
         do {
             let file = try Templates.instantiate(template, in: tab.url)
-            FileHistory.shared.record("新建文件", steps: [.trash(file)])
+            FileHistory.shared.record(L("新建文件"), steps: [.trash(file)])
             tab.reload(selecting: [file])
             tab.renamingURL = file
         } catch {
@@ -27,7 +27,7 @@ extension WorkspaceState {
         let tab = activeTab
         do {
             let (folder, undo) = try FileTools.newFolder(with: items, in: tab.url)
-            FileHistory.shared.record("用所选项目新建文件夹", steps: undo)
+            FileHistory.shared.record(L("用所选项目新建文件夹"), steps: undo)
             tab.reload(selecting: [folder])
             tab.renamingURL = folder
         } catch {
@@ -44,8 +44,8 @@ extension WorkspaceState {
             await MainActor.run {
                 switch result {
                 case .success(let (moved, undo)):
-                    FileHistory.shared.record("平铺文件夹", steps: undo)
-                    self.alertMessage = moved == 0 ? "“\(folder.lastPathComponent)”的子文件夹中没有文件。" : nil
+                    FileHistory.shared.record(L("平铺文件夹"), steps: undo)
+                    self.alertMessage = moved == 0 ? L("“\(folder.lastPathComponent)”的子文件夹中没有文件。") : nil
                 case .failure(let error):
                     self.report(error)
                 }
@@ -58,21 +58,21 @@ extension WorkspaceState {
     private func confirmFlatten(_ folder: URL) -> Bool {
         let preview = FileTools.flattenPreview(folder)
         guard preview.fileCount > 0 else {
-            alertMessage = "“\(folder.lastPathComponent)”的子文件夹中没有文件。"
+            alertMessage = L("“\(folder.lastPathComponent)”的子文件夹中没有文件。")
             return false
         }
         let alert = NSAlert()
         alert.alertStyle = preview.looksLikeProject ? .critical : .warning
-        alert.messageText = "要平铺“\(folder.lastPathComponent)”吗？"
-        let names = preview.subfolders.prefix(6).joined(separator: "、") + (preview.subfolders.count > 6 ? " 等" : "")
-        var text = "将把 \(preview.subfolders.count) 个子文件夹（\(names)）中的 \(preview.fileCount) 个文件移到“\(folder.lastPathComponent)”里，清空的子文件夹会移到废纸篓。可以用 ⌘Z 撤销。"
+        alert.messageText = L("要平铺“\(folder.lastPathComponent)”吗？")
+        let names = preview.subfolders.prefix(6).joined(separator: L("、")) + (preview.subfolders.count > 6 ? L(" 等") : "")
+        var text = L("将把 \(preview.subfolders.count) 个子文件夹（\(names)）中的 \(preview.fileCount) 个文件移到“\(folder.lastPathComponent)”里，清空的子文件夹会移到废纸篓。可以用 ⌘Z 撤销。")
         if preview.looksLikeProject {
-            text = "⚠️ 这个文件夹看起来是一个代码项目，平铺会打乱它的目录结构，导致无法编译。\n\n" + text
+            text = L("⚠️ 这个文件夹看起来是一个代码项目，平铺会打乱它的目录结构，导致无法编译。\n\n") + text
         }
         alert.informativeText = text
-        let cancel = alert.addButton(withTitle: "取消")
+        let cancel = alert.addButton(withTitle: L("取消"))
         cancel.keyEquivalent = "\r"
-        let go = alert.addButton(withTitle: "平铺")
+        let go = alert.addButton(withTitle: L("平铺"))
         go.hasDestructiveAction = true
         go.keyEquivalent = ""
         return alert.runModal() == .alertSecondButtonReturn
@@ -88,7 +88,7 @@ extension WorkspaceState {
         } catch {
             report(error)
         }
-        FileHistory.shared.record(alias ? "制作替身" : "创建符号链接", steps: created.map { .trash($0) })
+        FileHistory.shared.record(alias ? L("制作替身") : L("创建符号链接"), steps: created.map { .trash($0) })
         tab.reload(selecting: Set(created))
     }
 
@@ -97,7 +97,7 @@ extension WorkspaceState {
         guard !items.isEmpty else { return }
         Task.detached(priority: .userInitiated) {
             let text = FileTools.hashes(items)
-            await MainActor.run { self.commandOutput = CommandOutput(title: "文件哈希", text: text, succeeded: true) }
+            await MainActor.run { self.commandOutput = CommandOutput(title: L("文件哈希"), text: text, succeeded: true) }
         }
     }
 
@@ -105,7 +105,7 @@ extension WorkspaceState {
         let root = folder ?? selectionOrNil(nil).first.flatMap(TabState.resolvedDirectory) ?? activeTab.url
         Task.detached(priority: .userInitiated) {
             let text = FileTools.tree(of: root)
-            await MainActor.run { self.commandOutput = CommandOutput(title: "目录树：\(root.lastPathComponent)", text: text, succeeded: true) }
+            await MainActor.run { self.commandOutput = CommandOutput(title: L("目录树：\(root.lastPathComponent)"), text: text, succeeded: true) }
         }
     }
 
@@ -145,10 +145,10 @@ extension WorkspaceState {
 
         var title: String {
             switch self {
-            case .convert(let format, let maxPixel): maxPixel.map { "缩小到 \($0) 像素" } ?? "转换为 \(format.title)"
-            case .rotate(let clockwise): clockwise ? "向右旋转" : "向左旋转"
-            case .pdf: "合成 PDF"
-            case .removeBackground: "移除背景"
+            case .convert(let format, let maxPixel): maxPixel.map { L("缩小到 \($0) 像素") } ?? L("转换为 \(format.title)")
+            case .rotate(let clockwise): clockwise ? L("向右旋转") : L("向左旋转")
+            case .pdf: L("合成 PDF")
+            case .removeBackground: L("移除背景")
             }
         }
     }

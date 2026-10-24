@@ -9,8 +9,8 @@ enum Templates {
     }
 
     private static let defaults: [(String, String)] = [
-        ("文本文件.txt", ""),
-        ("Markdown.md", "# 标题\n\n"),
+        (L("文本文件.txt"), ""),
+        ("Markdown.md", L("# 标题\n\n")),
         ("Python.py", "#!/usr/bin/env python3\n\n\ndef main():\n    pass\n\n\nif __name__ == \"__main__\":\n    main()\n"),
         ("Shell.sh", "#!/bin/zsh\nset -euo pipefail\n\n"),
         ("HTML.html", "<!doctype html>\n<html lang=\"zh\">\n<head>\n  <meta charset=\"utf-8\">\n  <title></title>\n</head>\n<body>\n\n</body>\n</html>\n"),
@@ -37,7 +37,7 @@ enum Templates {
     /// Copies a template into `directory` under a free name; returns the new file.
     static func instantiate(_ template: URL, in directory: URL) throws -> URL {
         let ext = template.pathExtension
-        let name = ext.isEmpty ? "未命名" : "未命名.\(ext)"
+        let name = ext.isEmpty ? L("未命名") : L("未命名.\(ext)")
         let target = FileOperations.uniqueURL(for: name, in: directory)
         try FileManager.default.copyItem(at: template, to: target)
         return target
@@ -49,7 +49,7 @@ enum FileTools {
 
     /// Moves `items` into a new folder next to them. Returns the folder and undo steps.
     static func newFolder(with items: [URL], in directory: URL) throws -> (URL, [UndoStep]) {
-        let folder = FileOperations.uniqueURL(for: "带项目的新文件夹", in: directory)
+        let folder = FileOperations.uniqueURL(for: L("带项目的新文件夹"), in: directory)
         try fm.createDirectory(at: folder, withIntermediateDirectories: false)
         var undo: [UndoStep] = [.trash(folder)]
         for item in items {
@@ -133,14 +133,14 @@ enum FileTools {
     }
 
     static func makeSymlink(to item: URL) throws -> URL {
-        let link = FileOperations.uniqueURL(for: item.lastPathComponent + " 链接", in: item.deletingLastPathComponent())
+        let link = FileOperations.uniqueURL(for: item.lastPathComponent + L(" 链接"), in: item.deletingLastPathComponent())
         try fm.createSymbolicLink(at: link, withDestinationURL: item)
         return link
     }
 
     /// Finder alias (bookmark file): survives the original being moved, unlike a symlink.
     static func makeAlias(to item: URL) throws -> URL {
-        let alias = FileOperations.uniqueURL(for: item.lastPathComponent + " 替身", in: item.deletingLastPathComponent())
+        let alias = FileOperations.uniqueURL(for: item.lastPathComponent + L(" 替身"), in: item.deletingLastPathComponent())
         let data = try item.bookmarkData(options: .suitableForBookmarkFile, includingResourceValuesForKeys: nil, relativeTo: nil)
         try URL.writeBookmarkData(data, to: alias)
         return alias
@@ -151,7 +151,7 @@ enum FileTools {
         urls.map { url -> String in
             guard (try? url.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true,
                   let handle = try? FileHandle(forReadingFrom: url) else {
-                return "\(url.lastPathComponent)\n  （不是文件，已跳过）"
+                return L("\(url.lastPathComponent)\n  （不是文件，已跳过）")
             }
             defer { try? handle.close() }
             var md5 = Insecure.MD5(), sha1 = Insecure.SHA1(), sha256 = SHA256()
@@ -198,7 +198,7 @@ enum FileTools {
         }
         walk(root, prefix: "", depth: 0)
         lines.append("")
-        lines.append("\(folders) 个文件夹，\(files) 个文件" + (count >= limit ? "（已截断）" : ""))
+        lines.append(L("\(folders) 个文件夹，\(files) 个文件") + (count >= limit ? L("（已截断）") : ""))
         return lines.joined(separator: "\n")
     }
 }

@@ -6,8 +6,8 @@ enum FileOperationError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .invalidName(let name): "“\(name)”不是有效的文件名。"
-        case .exists(let name): "已存在名为“\(name)”的项目。"
+        case .invalidName(let name): L("“\(name)”不是有效的文件名。")
+        case .exists(let name): L("已存在名为“\(name)”的项目。")
         }
     }
 }
@@ -64,12 +64,12 @@ enum FileOperations {
     }
 
     static func newFolder(in directory: URL) throws -> URL {
-        let target = uniqueURL(for: "未命名文件夹", in: directory)
+        let target = uniqueURL(for: L("未命名文件夹"), in: directory)
         try fm.createDirectory(at: target, withIntermediateDirectories: false)
         return target
     }
 
-    static func newFile(in directory: URL, name: String = "未命名.txt") throws -> URL {
+    static func newFile(in directory: URL, name: String = L("未命名.txt")) throws -> URL {
         let target = uniqueURL(for: name, in: directory)
         guard fm.createFile(atPath: target.path, contents: Data()) else {
             throw CocoaError(.fileWriteUnknown, userInfo: [NSFilePathErrorKey: target.path])

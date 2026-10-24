@@ -7,10 +7,10 @@ struct BatchRenameRule: Equatable {
         var id: Self { self }
         var title: String {
             switch self {
-            case .replace: "替换文本"
-            case .add: "添加文本"
-            case .sequence: "格式化序号"
-            case .letterCase: "大小写"
+            case .replace: L("替换文本")
+            case .add: L("添加文本")
+            case .sequence: L("格式化序号")
+            case .letterCase: L("大小写")
             }
         }
     }
@@ -20,9 +20,9 @@ struct BatchRenameRule: Equatable {
         var id: Self { self }
         var title: String {
             switch self {
-            case .lower: "全部小写"
-            case .upper: "全部大写"
-            case .capitalized: "单词首字母大写"
+            case .lower: L("全部小写")
+            case .upper: L("全部大写")
+            case .capitalized: L("单词首字母大写")
             }
         }
     }
@@ -40,7 +40,7 @@ struct BatchRenameRule: Equatable {
     var suffix = ""
 
     // sequence
-    var baseName = "文件"
+    var baseName = L("文件")
     var startIndex = 1
     var digits = 2
     var numberFirst = false
@@ -102,7 +102,7 @@ struct BatchRenameRule: Equatable {
             _ = try NSRegularExpression(pattern: find)
             return nil
         } catch {
-            return "正则表达式无效"
+            return L("正则表达式无效")
         }
     }
 }
@@ -112,9 +112,9 @@ enum BatchRenamer {
         case invalid, duplicate, exists
         var message: String {
             switch self {
-            case .invalid: "名称无效"
-            case .duplicate: "与其他新名称重复"
-            case .exists: "已存在同名项目"
+            case .invalid: L("名称无效")
+            case .duplicate: L("与其他新名称重复")
+            case .exists: L("已存在同名项目")
             }
         }
     }

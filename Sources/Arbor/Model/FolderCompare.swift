@@ -7,11 +7,11 @@ enum CompareStatus: String, Sendable {
 
     var label: String {
         switch self {
-        case .onlyHere: "仅此侧"
-        case .newer: "较新"
-        case .older: "较旧"
-        case .different: "不同"
-        case .same: "相同"
+        case .onlyHere: L("仅此侧")
+        case .newer: L("较新")
+        case .older: L("较旧")
+        case .different: L("不同")
+        case .same: L("相同")
         }
     }
 }
@@ -23,9 +23,9 @@ enum CompareSelection: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .differing: "选择所有不同项（新增、较新、较旧、不同）"
-        case .onlyHere: "选择仅此侧有的项目"
-        case .newer: "选择较新的项目"
+        case .differing: L("选择所有不同项（新增、较新、较旧、不同）")
+        case .onlyHere: L("选择仅此侧有的项目")
+        case .newer: L("选择较新的项目")
         }
     }
 

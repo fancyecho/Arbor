@@ -16,8 +16,8 @@ struct BatchRenameView: View {
 
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Text("批量重命名").font(.headline)
-                Text("\(urls.count) 个项目").foregroundStyle(.secondary)
+                Text(L("批量重命名")).font(.headline)
+                Text(L("\(urls.count) 个项目")).foregroundStyle(.secondary)
                 Spacer()
                 Picker("", selection: $rule.mode) {
                     ForEach(BatchRenameRule.Mode.allCases) { Text($0.title).tag($0) }
@@ -38,12 +38,12 @@ struct BatchRenameView: View {
                 } else if let problem = problems.compactMap({ $0 }).first {
                     Label(problem.message, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                 } else {
-                    Text("将重命名 \(changed) 个项目").foregroundStyle(.secondary)
+                    Text(L("将重命名 \(changed) 个项目")).foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button("取消", role: .cancel) { dismiss() }
+                Button(L("取消"), role: .cancel) { dismiss() }
                     .keyboardShortcut(.cancelAction)
-                Button("重命名") { apply(newNames) }
+                Button(L("重命名")) { apply(newNames) }
                     .keyboardShortcut(.defaultAction)
                     .disabled(blocked || changed == 0)
             }
@@ -58,31 +58,31 @@ struct BatchRenameView: View {
         Form {
             switch rule.mode {
             case .replace:
-                TextField("查找", text: $rule.find, prompt: Text(rule.useRegex ? "正则表达式，如 (\\d+)" : "要查找的文本"))
-                TextField("替换为", text: $rule.replacement, prompt: Text(rule.useRegex ? "可用 $1 引用分组" : "留空即删除"))
+                TextField(L("查找"), text: $rule.find, prompt: Text(rule.useRegex ? L("正则表达式，如 (\\d+)") : L("要查找的文本")))
+                TextField(L("替换为"), text: $rule.replacement, prompt: Text(rule.useRegex ? L("可用 $1 引用分组") : L("留空即删除")))
                 HStack(spacing: 16) {
-                    Toggle("正则表达式", isOn: $rule.useRegex)
-                    Toggle("区分大小写", isOn: $rule.caseSensitive)
-                    Toggle("包含扩展名", isOn: $rule.includeExtension)
+                    Toggle(L("正则表达式"), isOn: $rule.useRegex)
+                    Toggle(L("区分大小写"), isOn: $rule.caseSensitive)
+                    Toggle(L("包含扩展名"), isOn: $rule.includeExtension)
                 }
             case .add:
-                TextField("前缀", text: $rule.prefix, prompt: Text("加在名称前"))
-                TextField("后缀", text: $rule.suffix, prompt: Text("加在扩展名前"))
+                TextField(L("前缀"), text: $rule.prefix, prompt: Text(L("加在名称前")))
+                TextField(L("后缀"), text: $rule.suffix, prompt: Text(L("加在扩展名前")))
             case .sequence:
-                TextField("名称", text: $rule.baseName, prompt: Text("留空则只保留序号"))
+                TextField(L("名称"), text: $rule.baseName, prompt: Text(L("留空则只保留序号")))
                 HStack(spacing: 16) {
-                    Stepper("起始 \(rule.startIndex)", value: $rule.startIndex, in: 0...99999)
-                    Stepper("位数 \(rule.digits)", value: $rule.digits, in: 1...6)
-                    TextField("分隔符", text: $rule.separator).frame(width: 110)
-                    Toggle("序号在前", isOn: $rule.numberFirst)
+                    Stepper(L("起始 \(rule.startIndex)"), value: $rule.startIndex, in: 0...99999)
+                    Stepper(L("位数 \(rule.digits)"), value: $rule.digits, in: 1...6)
+                    TextField(L("分隔符"), text: $rule.separator).frame(width: 110)
+                    Toggle(L("序号在前"), isOn: $rule.numberFirst)
                 }
             case .letterCase:
-                Picker("转换为", selection: $rule.caseStyle) {
+                Picker(L("转换为"), selection: $rule.caseStyle) {
                     ForEach(BatchRenameRule.CaseStyle.allCases) { Text($0.title).tag($0) }
                 }
                 .pickerStyle(.radioGroup)
                 .horizontalRadioGroupLayout()
-                Toggle("包含扩展名", isOn: $rule.includeExtension)
+                Toggle(L("包含扩展名"), isOn: $rule.includeExtension)
             }
         }
         .formStyle(.columns)
@@ -117,7 +117,7 @@ struct BatchRenameView: View {
         do {
             let renamed = try BatchRenamer.perform(urls: urls, newNames: newNames)
             let pairs = zip(urls, newNames).map { ($0, $0.deletingLastPathComponent().appendingPathComponent($1)) }
-            FileHistory.shared.record("批量重命名", steps: UndoExecutor.renameSteps(pairs.map { (from: $0.0, to: $0.1) }))
+            FileHistory.shared.record(L("批量重命名"), steps: UndoExecutor.renameSteps(pairs.map { (from: $0.0, to: $0.1) }))
             tab.reload(selecting: Set(renamed))
             dismiss()
         } catch {

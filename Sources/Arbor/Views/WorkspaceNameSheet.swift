@@ -11,19 +11,19 @@ struct WorkspaceNameSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(isRename ? "重命名工作区" : "存储为工作区").font(.headline)
+            Text(isRename ? L("重命名工作区") : L("存储为工作区")).font(.headline)
             if !isRename {
-                Text("保存当前的窗格、标签页和路径，之后可从侧边栏或「工作区」菜单一键切换。")
+                Text(L("保存当前的窗格、标签页和路径，之后可从侧边栏或「工作区」菜单一键切换。"))
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            TextField("名称", text: $name, prompt: Text("例如：写论文、整理照片"))
+            TextField(L("名称"), text: $name, prompt: Text(L("例如：写论文、整理照片")))
                 .textFieldStyle(.roundedBorder)
                 .onSubmit(commit)
             if !isRename {
                 HStack(spacing: 8) {
-                    Text("颜色").foregroundStyle(.secondary)
+                    Text(L("颜色")).foregroundStyle(.secondary)
                     ForEach(WorkspaceTint.allCases) { tint in
                         Button { color = tint } label: {
                             RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -40,15 +40,15 @@ struct WorkspaceNameSheet: View {
                         .accessibilityLabel(tint.title)
                     }
                 }
-                Text("切换到这个工作区时，整个窗口会变成这个颜色。")
+                Text(L("切换到这个工作区时，整个窗口会变成这个颜色。"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             HStack {
                 Spacer()
-                Button("取消", role: .cancel) { dismiss() }
+                Button(L("取消"), role: .cancel) { dismiss() }
                     .keyboardShortcut(.cancelAction)
-                Button(isRename ? "重命名" : "存储", action: commit)
+                Button(isRename ? L("重命名") : L("存储"), action: commit)
                     .keyboardShortcut(.defaultAction)
                     .disabled(trimmed.isEmpty)
             }

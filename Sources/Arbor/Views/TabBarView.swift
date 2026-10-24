@@ -54,7 +54,7 @@ struct TabBarView: View {
             }
             .buttonStyle(.borderless)
             .foregroundStyle(.secondary)
-            .help("新建标签页 (⌘T)")
+            .help(L("新建标签页 (⌘T)"))
             .padding(.trailing, workspace.paneCount > 1 ? 0 : 8)
             if workspace.paneCount > 1 {
                 PaneCloseButton { workspace.closePane(pane) }
@@ -103,7 +103,7 @@ private struct TabChip: View {
                     .buttonStyle(.borderless)
                     .foregroundStyle(.secondary)
                     .opacity(hovering || isSelected ? 1 : 0)
-                    .help("关闭标签页 (⌘W)")
+                    .help(L("关闭标签页 (⌘W)"))
                 }
             }
         }
@@ -135,7 +135,7 @@ private struct TabChip: View {
             workspace.focusToken += 1
         }
         .onHover { hovering = $0 }
-        .help(tab.isPinned ? "\(tab.title)（已固定）\n\(tab.url.path)" : tab.url.path)
+        .help(tab.isPinned ? L("\(tab.title)（已固定）\n\(tab.url.path)") : tab.url.path)
         .contextMenu { menu }
         .onDrag {
             TabDrag.tab = tab
@@ -174,23 +174,23 @@ private struct TabChip: View {
 
     @ViewBuilder
     private var menu: some View {
-        Button("新建标签页", systemImage: "plus") {
+        Button(L("新建标签页"), systemImage: "plus") {
             workspace.activate(pane)
             workspace.newTab()
         }
-        Button("复制标签页", systemImage: "plus.square.on.square") { pane.duplicate(tab.id) }
-        Button(tab.isPinned ? "取消固定" : "固定标签页", systemImage: tab.isPinned ? "pin.slash" : "pin") {
+        Button(L("复制标签页"), systemImage: "plus.square.on.square") { pane.duplicate(tab.id) }
+        Button(tab.isPinned ? L("取消固定") : L("固定标签页"), systemImage: tab.isPinned ? "pin.slash" : "pin") {
             pane.togglePin(tab.id)
         }
-        Button("移到另一窗格", systemImage: "rectangle.split.2x1") { workspace.moveTabToOtherPane(tab, from: pane) }
+        Button(L("移到另一窗格"), systemImage: "rectangle.split.2x1") { workspace.moveTabToOtherPane(tab, from: pane) }
         Divider()
-        Button("拷贝路径", systemImage: "link") { FileOperations.copyPaths([tab.url]) }
-        Button("在终端中打开", systemImage: "terminal") { FileOperations.openInTerminal(tab.url) }
-        Button("在访达中显示", systemImage: "macwindow") { FileOperations.revealInFinder([tab.url]) }
+        Button(L("拷贝路径"), systemImage: "link") { FileOperations.copyPaths([tab.url]) }
+        Button(L("在终端中打开"), systemImage: "terminal") { FileOperations.openInTerminal(tab.url) }
+        Button(L("在访达中显示"), systemImage: "macwindow") { FileOperations.revealInFinder([tab.url]) }
         Divider()
-        Button("关闭标签页", systemImage: "xmark") { workspace.close(tab, in: pane) }
+        Button(L("关闭标签页"), systemImage: "xmark") { workspace.close(tab, in: pane) }
             .disabled(pane.tabs.count < 2)
-        Button("关闭其他标签页") { workspace.closeOtherTabs(tab, in: pane) }
+        Button(L("关闭其他标签页")) { workspace.closeOtherTabs(tab, in: pane) }
             .disabled(pane.tabs.count < 2)
     }
 }
@@ -302,6 +302,6 @@ private struct PaneCloseButton: View {
         .foregroundStyle(hovering ? .secondary : .tertiary)
         .onHover { hovering = $0 }
         .animation(.easeOut(duration: 0.12), value: hovering)
-        .help("关闭这个窗格")
+        .help(L("关闭这个窗格"))
     }
 }

@@ -3,12 +3,12 @@ import SwiftUI
 struct SettingsView: View {
     var body: some View {
         TabView {
-            GeneralSettings().tabItem { Label("通用", systemImage: "gearshape") }
-            AppsSettings().tabItem { Label("应用", systemImage: "app.badge") }
-            CommandsSettings().tabItem { Label("自定义命令", systemImage: "command") }
-            ColorRulesSettings().tabItem { Label("颜色规则", systemImage: "paintpalette") }
-            ShortcutsSettings().tabItem { Label("快捷键", systemImage: "keyboard") }
-            MenuSettings().tabItem { Label("右键菜单", systemImage: "contextualmenu.and.cursorarrow") }
+            GeneralSettings().tabItem { Label(L("通用"), systemImage: "gearshape") }
+            AppsSettings().tabItem { Label(L("应用"), systemImage: "app.badge") }
+            CommandsSettings().tabItem { Label(L("自定义命令"), systemImage: "command") }
+            ColorRulesSettings().tabItem { Label(L("颜色规则"), systemImage: "paintpalette") }
+            ShortcutsSettings().tabItem { Label(L("快捷键"), systemImage: "keyboard") }
+            MenuSettings().tabItem { Label(L("右键菜单"), systemImage: "contextualmenu.and.cursorarrow") }
         }
         .frame(width: 620, height: 460)
     }
@@ -18,10 +18,11 @@ private struct GeneralSettings: View {
     @Bindable private var settings = AppSettings.shared
     @State private var opensFolders = DefaultFolderApp.isArbor
     @State private var folderError: String?
+    @State private var language = AppLanguage.chosen
 
     private var folderFooter: String {
-        if let folderError { return "没能更改：\(folderError)" }
-        return "现在负责“在访达中显示”的是：\(DefaultFolderApp.currentName)。打开后，其他应用里的“在访达中显示”（比如浏览器的下载、Raycast 的 Show in Finder、Xcode）会改用 Arbor，并选中那个文件，立即生效。macOS 不允许第三方应用接管“打开文件夹”本身：从聚焦搜索、Raycast 或程序坞直接打开文件夹仍会用访达。"
+        if let folderError { return L("没能更改：\(folderError)") }
+        return L("现在负责“在访达中显示”的是：\(DefaultFolderApp.currentName)。打开后，其他应用里的“在访达中显示”（比如浏览器的下载、Raycast 的 Show in Finder、Xcode）会改用 Arbor，并选中那个文件，立即生效。macOS 不允许第三方应用接管“打开文件夹”本身：从聚焦搜索、Raycast 或程序坞直接打开文件夹仍会用访达。")
     }
 
     private func setOpensFolders(_ on: Bool) {
@@ -32,71 +33,87 @@ private struct GeneralSettings: View {
 
     var body: some View {
         Form {
-            Section("外观") {
-                Picker("外观", selection: $settings.appearance) {
+            Section(L("外观")) {
+                Picker(L("外观"), selection: $settings.appearance) {
                     ForEach(AppSettings.Appearance.allCases) { Text($0.title).tag($0) }
                 }
                 .pickerStyle(.segmented)
             }
-            Section("浏览") {
-                Toggle("显示隐藏文件", isOn: $settings.showHidden)
-                Toggle("文件夹排在文件前面", isOn: $settings.foldersFirst)
-                Toggle("列表中显示大小条和新鲜度光点", isOn: $settings.showListInsights)
+            Section {
+                Picker(L("语言"), selection: $language) {
+                    ForEach(AppLanguage.allCases) { Text($0.title).tag($0) }
+                }
+                .onChange(of: language) { _, language in AppLanguage.choose(language) }
+            } header: {
+                Text(L("语言"))
+            } footer: {
+                if language.runsInEnglish != Localization.isEnglish {
+                    HStack {
+                        Text(L("重新启动 Arbor 后生效。")).foregroundStyle(.secondary)
+                        Spacer()
+                        Button(L("立即重新启动")) { AppActions.relaunch() }
+                    }
+                }
+            }
+            Section(L("浏览")) {
+                Toggle(L("显示隐藏文件"), isOn: $settings.showHidden)
+                Toggle(L("文件夹排在文件前面"), isOn: $settings.foldersFirst)
+                Toggle(L("列表中显示大小条和新鲜度光点"), isOn: $settings.showListInsights)
             }
             Section {
-                Picker("新窗口的窗格", selection: $settings.newWindowPaneCount) {
-                    Text("和上次一样").tag(0)
+                Picker(L("新窗口的窗格"), selection: $settings.newWindowPaneCount) {
+                    Text(L("和上次一样")).tag(0)
                     Divider()
-                    Text("单窗格").tag(1)
-                    Text("双窗格").tag(2)
-                    Text("三窗格").tag(3)
+                    Text(L("单窗格")).tag(1)
+                    Text(L("双窗格")).tag(2)
+                    Text(L("三窗格")).tag(3)
                 }
             } header: {
-                Text("窗口")
+                Text(L("窗口"))
             } footer: {
-                Text("关掉所有窗口后再打开，会回到关闭前的标签页；“和上次一样”还会沿用窗格数、窗格宽度、侧边栏和检查器。已有窗口时按 ⌘N，新窗口沿用当前窗口的布局，从主目录开始。")
+                Text(L("关掉所有窗口后再打开，会回到关闭前的标签页；“和上次一样”还会沿用窗格数、窗格宽度、侧边栏和检查器。已有窗口时按 ⌘N，新窗口沿用当前窗口的布局，从主目录开始。"))
                     .foregroundStyle(.secondary)
             }
             Section {
-                Toggle("自动保存工作区的布局", isOn: $settings.autoSaveWorkspaces)
+                Toggle(L("自动保存工作区的布局"), isOn: $settings.autoSaveWorkspaces)
             } header: {
-                Text("工作区")
+                Text(L("工作区"))
             } footer: {
-                Text("工作区是一组存好的窗格、标签页和颜色。打开时，切换到别的工作区或退出 Arbor 都会把当前布局存回去；关闭后只有“用当前布局更新”才会保存。")
+                Text(L("工作区是一组存好的窗格、标签页和颜色。打开时，切换到别的工作区或退出 Arbor 都会把当前布局存回去；关闭后只有“用当前布局更新”才会保存。"))
                     .foregroundStyle(.secondary)
             }
             Section {
-                Toggle("自动检查更新", isOn: $settings.autoCheckUpdates)
-                Toggle("接收开发预览版", isOn: $settings.includePreviewUpdates)
-                LabeledContent("当前版本") {
+                Toggle(L("自动检查更新"), isOn: $settings.autoCheckUpdates)
+                Toggle(L("接收开发预览版"), isOn: $settings.includePreviewUpdates)
+                LabeledContent(L("当前版本")) {
                     HStack {
                         Text(Updater.shared.currentTag).foregroundStyle(.secondary)
-                        Button("检查更新") { Updater.shared.check(userInitiated: true) }
+                        Button(L("检查更新")) { Updater.shared.check(userInitiated: true) }
                     }
                 }
             } header: {
-                Text("更新")
+                Text(L("更新"))
             } footer: {
-                Text("更新来自 GitHub 上的 \(Updater.shared.repository) 发布页，下载后会在 Arbor 退出时替换并重新打开。")
+                Text(L("更新来自 GitHub 上的 \(Updater.shared.repository) 发布页，下载后会在 Arbor 退出时替换并重新打开。"))
                     .foregroundStyle(.secondary)
             }
-            Section("检查器") {
-                Toggle("自动计算文件夹大小", isOn: $settings.autoFolderSize)
+            Section(L("检查器")) {
+                Toggle(L("自动计算文件夹大小"), isOn: $settings.autoFolderSize)
             }
             Section {
-                Toggle("用 Arbor 代替访达显示文件", isOn: Binding(get: { opensFolders }, set: setOpensFolders))
+                Toggle(L("用 Arbor 代替访达显示文件"), isOn: Binding(get: { opensFolders }, set: setOpensFolders))
             } header: {
-                Text("默认文件管理器")
+                Text(L("默认文件管理器"))
             } footer: {
                 Text(folderFooter).foregroundStyle(.secondary)
             }
             Section {
-                Toggle("在菜单栏显示 Arbor 图标", isOn: $settings.showMenuBarIcon)
-                LabeledContent("随时呼出 Arbor") { HotKeyRecorder(spec: $settings.hotKey) }
+                Toggle(L("在菜单栏显示 Arbor 图标"), isOn: $settings.showMenuBarIcon)
+                LabeledContent(L("随时呼出 Arbor")) { HotKeyRecorder(spec: $settings.hotKey) }
             } header: {
-                Text("系统")
+                Text(L("系统"))
             } footer: {
-                Text("在任何应用中按下快捷键即可显示 / 隐藏 Arbor。显示菜单栏图标时，关闭所有窗口后 Arbor 会继续在后台运行。\n访达右键菜单「服务 › 在 Arbor 中打开」可在系统设置 › 键盘 › 键盘快捷键 › 服务中开启。")
+                Text(L("在任何应用中按下快捷键即可显示 / 隐藏 Arbor。显示菜单栏图标时，关闭所有窗口后 Arbor 会继续在后台运行。\n访达右键菜单「服务 › 在 Arbor 中打开」可在系统设置 › 键盘 › 键盘快捷键 › 服务中开启。"))
                     .foregroundStyle(.secondary)
             }
         }
@@ -110,14 +127,14 @@ private struct AppsSettings: View {
     var body: some View {
         Form {
             Section {
-                Picker("终端", selection: $settings.terminalBundleID) {
+                Picker(L("终端"), selection: $settings.terminalBundleID) {
                     ForEach(ExternalApp.installedTerminals) { appRow($0).tag($0.bundleID) }
                 }
-                Picker("编辑器", selection: $settings.editorBundleID) {
+                Picker(L("编辑器"), selection: $settings.editorBundleID) {
                     ForEach(ExternalApp.installedEditors) { appRow($0).tag($0.bundleID) }
                 }
             } footer: {
-                Text("“在终端中打开”（⌥⌘T）和“在编辑器中打开”（⌥⌘E）使用这里选择的应用。只列出已安装的应用。")
+                Text(L("“在终端中打开”（⌥⌘T）和“在编辑器中打开”（⌥⌘E）使用这里选择的应用。只列出已安装的应用。"))
                     .foregroundStyle(.secondary)
             }
         }
@@ -151,7 +168,7 @@ private struct CommandsSettings: View {
                 Divider()
                 HStack(spacing: 0) {
                     Button {
-                        let command = CustomCommand(name: "新命令", script: "echo $FILES")
+                        let command = CustomCommand(name: L("新命令"), script: "echo $FILES")
                         settings.customCommands.append(command)
                         selection = command.id
                     } label: { Image(systemName: "plus").frame(width: 24, height: 20) }
@@ -169,12 +186,12 @@ private struct CommandsSettings: View {
 
             if let index = settings.customCommands.firstIndex(where: { $0.id == selection }) {
                 Form {
-                    TextField("名称", text: $settings.customCommands[index].name)
-                    Picker("运行方式", selection: $settings.customCommands[index].mode) {
+                    TextField(L("名称"), text: $settings.customCommands[index].name)
+                    Picker(L("运行方式"), selection: $settings.customCommands[index].mode) {
                         ForEach(CustomCommand.Mode.allCases) { Text($0.title).tag($0) }
                     }
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("命令（zsh）")
+                        Text(L("命令（zsh）"))
                         TextEditor(text: $settings.customCommands[index].script)
                             .font(.system(size: 12, design: .monospaced))
                             .frame(minHeight: 90)
@@ -188,7 +205,7 @@ private struct CommandsSettings: View {
                 .padding()
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             } else {
-                Text("选择或添加一条命令。命令会出现在右键菜单「自定义命令」和 ⌘K 命令面板中。")
+                Text(L("选择或添加一条命令。命令会出现在右键菜单「自定义命令」和 ⌘K 命令面板中。"))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .padding()
@@ -204,22 +221,22 @@ private struct ShortcutsSettings: View {
     @State private var query = ""
 
     var body: some View {
-        let entries = ShortcutCatalog.entries.filter { query.isEmpty || Fuzzy.score(query, $0.title) != nil }
+        let entries = ShortcutCatalog.entries.filter { query.isEmpty || Fuzzy.score(query, L(key: $0.title)) != nil }
         let used = Dictionary(grouping: ShortcutCatalog.entries.compactMap { entry in
             ShortcutCatalog.current(entry.title).map { ($0.display, entry.title) }
         }, by: \.0)
         VStack(spacing: 0) {
             HStack {
-                TextField("搜索命令", text: $query).textFieldStyle(.roundedBorder)
-                Button("全部恢复默认") {
+                TextField(L("搜索命令"), text: $query).textFieldStyle(.roundedBorder)
+                Button(L("全部恢复默认")) {
                     settings.customShortcuts = [:]
                     settings.clearedShortcuts = []
                 }
             }
             .padding(12)
             Form {
-                LabeledContent("固定按键（不可更改）") {
-                    Text("空格 快速查看 · ↩ 重命名 · ⇥ 切换窗格").foregroundStyle(.secondary)
+                LabeledContent(L("固定按键（不可更改）")) {
+                    Text(L("空格 快速查看 · ↩ 重命名 · ⇥ 切换窗格")).foregroundStyle(.secondary)
                 }
                 ForEach(entries, id: \.title) { entry in
                     let current = ShortcutCatalog.current(entry.title)
@@ -227,12 +244,12 @@ private struct ShortcutsSettings: View {
                     LabeledContent {
                         HStack {
                             if conflict {
-                                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange).help("与其他命令冲突")
+                                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange).help(L("与其他命令冲突"))
                             }
                             ShortcutRecorder(id: entry.title)
                         }
                     } label: {
-                        Text(entry.title)
+                        Text(L(key: entry.title))
                     }
                 }
             }
@@ -250,14 +267,14 @@ private struct ShortcutRecorder: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            Button(recording ? "请按下…" : (ShortcutCatalog.current(id)?.display ?? "无")) { recording ? stop() : start() }
+            Button(recording ? L("请按下…") : (ShortcutCatalog.current(id)?.display ?? L("无"))) { recording ? stop() : start() }
                 .frame(minWidth: 90)
             Menu {
-                Button("恢复默认") {
+                Button(L("恢复默认")) {
                     settings.customShortcuts[id] = nil
                     settings.clearedShortcuts.remove(id)
                 }
-                Button("移除快捷键") {
+                Button(L("移除快捷键")) {
                     settings.customShortcuts[id] = nil
                     settings.clearedShortcuts.insert(id)
                 }
@@ -303,16 +320,16 @@ private struct MenuSettings: View {
         Form {
             Section {
                 ForEach(ContextMenuBuilder.customizable, id: \.self) { title in
-                    Toggle(title, isOn: Binding(
+                    Toggle(L(key: title), isOn: Binding(
                         get: { !settings.hiddenMenuItems.contains(title) },
                         set: { visible in
                             if visible { settings.hiddenMenuItems.remove(title) } else { settings.hiddenMenuItems.insert(title) }
                         }))
                 }
             } header: {
-                Text("在右键菜单中显示")
+                Text(L("在右键菜单中显示"))
             } footer: {
-                Text("打开、剪切、拷贝、粘贴、重命名、移到废纸篓始终显示。工具栏可在窗口工具栏上右键 › 自定义工具栏。")
+                Text(L("打开、剪切、拷贝、粘贴、重命名、移到废纸篓始终显示。工具栏可在窗口工具栏上右键 › 自定义工具栏。"))
                     .foregroundStyle(.secondary)
             }
         }
@@ -331,7 +348,7 @@ struct CommandOutputSheet: View {
                 .font(.headline)
                 .foregroundStyle(output.succeeded ? Color.primary : Color.orange)
             ScrollView {
-                Text(output.text.isEmpty ? "（无输出）" : output.text)
+                Text(output.text.isEmpty ? L("（无输出）") : output.text)
                     .font(.system(size: 12, design: .monospaced))
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -339,12 +356,12 @@ struct CommandOutputSheet: View {
             }
             .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
             HStack {
-                Button("拷贝输出") {
+                Button(L("拷贝输出")) {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(output.text, forType: .string)
                 }
                 Spacer()
-                Button("完成") { dismiss() }.keyboardShortcut(.defaultAction)
+                Button(L("完成")) { dismiss() }.keyboardShortcut(.defaultAction)
             }
         }
         .padding(20)
@@ -376,13 +393,13 @@ private struct ColorRulesSettings: View {
                         .buttonStyle(.borderless)
                     }
                 }
-                Button("添加规则", systemImage: "plus") {
+                Button(L("添加规则"), systemImage: "plus") {
                     settings.colorRules.append(ColorRule(pattern: "", tint: .blue))
                 }
             } header: {
-                Text("按文件名给文件着色")
+                Text(L("按文件名给文件着色"))
             } footer: {
-                Text("用分号分隔多个通配符，例如 *.psd; *.sketch 或 IMG_*。规则从上到下匹配，第一条匹配的生效。")
+                Text(L("用分号分隔多个通配符，例如 *.psd; *.sketch 或 IMG_*。规则从上到下匹配，第一条匹配的生效。"))
                     .foregroundStyle(.secondary)
             }
         }

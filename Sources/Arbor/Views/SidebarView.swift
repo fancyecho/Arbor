@@ -33,7 +33,7 @@ struct SidebarView: View {
                 ForEach(Array(store.favorites.enumerated()), id: \.element.id) { index, favorite in
                     row(Place(name: favorite.name, url: favorite.url, symbol: favorite.symbol), dimmed: !favorite.exists) {
                         Divider()
-                        Button("从边栏中移除", systemImage: "minus.circle") { store.removeFavorite(favorite) }
+                        Button(L("从边栏中移除"), systemImage: "minus.circle") { store.removeFavorite(favorite) }
                     }
                     .background { if index == 0 { SlimScrollers(tint: tint).frame(width: 0, height: 0) } }
                 }
@@ -45,9 +45,9 @@ struct SidebarView: View {
                     }
                 }
             } header: {
-                Text("个人收藏")
+                Text(L("个人收藏"))
                     .contextMenu {
-                        Button("恢复默认收藏") { store.resetFavorites() }
+                        Button(L("恢复默认收藏")) { store.resetFavorites() }
                     }
             }
 
@@ -55,15 +55,15 @@ struct SidebarView: View {
                 ForEach(library.saved) { saved in workspaceRow(saved) }
                     .onMove { library.move(from: $0, to: $1) }
                 Label {
-                    Text(library.saved.isEmpty ? "把当前布局存为工作区…" : "存储当前布局…")
+                    Text(library.saved.isEmpty ? L("把当前布局存为工作区…") : L("存储当前布局…"))
                 } icon: {
                     Image(systemName: "plus.circle")
                 }
                 .foregroundStyle(.secondary)
                 .modifier(SidebarRowStyle(isSelected: false) { workspace.workspaceNameRequest = .save })
-                .help("工作区 = 一组存好的窗格、标签页和颜色。比如“写论文”同时打开论文和参考文献，“整理照片”打开相册和导出文件夹，点一下就切过去。")
+                .help(L("工作区 = 一组存好的窗格、标签页和颜色。比如“写论文”同时打开论文和参考文献，“整理照片”打开相册和导出文件夹，点一下就切过去。"))
             } header: {
-                Text("工作区")
+                Text(L("工作区"))
             }
 
             let recents = recentPlaces
@@ -71,9 +71,9 @@ struct SidebarView: View {
                 Section(isExpanded: expanded("recents")) {
                     ForEach(recents, id: \.url) { row($0) }
                 } header: {
-                    Text("最近")
+                    Text(L("最近"))
                         .contextMenu {
-                            Button("清除最近位置") { store.clearRecents() }
+                            Button(L("清除最近位置")) { store.clearRecents() }
                         }
                 }
             }
@@ -98,24 +98,24 @@ struct SidebarView: View {
                     }
                 }
             } header: {
-                Text("标签")
+                Text(L("标签"))
             }
 
             Section(isExpanded: expanded("locations")) {
                 ForEach(volumes.volumes, id: \.url) { place in
                     row(place) {
                         Divider()
-                        Button("分析空间占用", systemImage: "chart.pie") { workspace.analyzeSpace(place.url) }
+                        Button(L("分析空间占用"), systemImage: "chart.pie") { workspace.analyzeSpace(place.url) }
                         if place.isEjectable {
-                            Button("推出“\(place.name)”", systemImage: "eject") { volumes.eject(place) }
+                            Button(L("推出“\(place.name)”"), systemImage: "eject") { volumes.eject(place) }
                         }
                     }
                 }
                 row(Places.trash)
             } header: {
-                Text("位置")
+                Text(L("位置"))
                     .contextMenu {
-                        Button("连接服务器…", systemImage: "server.rack") { workspace.showConnectServer = true }
+                        Button(L("连接服务器…"), systemImage: "server.rack") { workspace.showConnectServer = true }
                     }
             }
         }
@@ -146,14 +146,14 @@ struct SidebarView: View {
             Spacer(minLength: 0)
             if place.isEjectable {
                 if volumes.ejecting.contains(place.url.standardizedFileURL) {
-                    ProgressView().controlSize(.mini).help("正在推出…")
+                    ProgressView().controlSize(.mini).help(L("正在推出…"))
                 } else {
                     Button { volumes.eject(place) } label: { Image(systemName: "eject.fill").font(.caption) }
                         .buttonStyle(.borderless)
                         .foregroundStyle(.secondary)
                         // Its own gesture wins over the row's tap, so ejecting never opens the disk first.
                         .highPriorityGesture(TapGesture().onEnded { volumes.eject(place) })
-                        .help("推出")
+                        .help(L("推出"))
                 }
             }
         }
@@ -161,21 +161,21 @@ struct SidebarView: View {
             workspace.activeTab.navigate(to: place.url)
             workspace.focusToken += 1
         })
-        .help(dimmed ? "\(place.url.path)（不存在）" : place.url.path)
+        .help(dimmed ? L("\(place.url.path)（不存在）") : place.url.path)
         // Dropping *onto* a row moves/copies files into that folder.
         .dropDestination(for: URL.self) { urls, _ in
             FileOperationQueue.shared.transfer(urls, to: place.url) { _, error in workspace.report(error) }
             return true
         }
         .contextMenu {
-            Button("在新标签页中打开", systemImage: "plus.square.on.square") { workspace.openInNewTab(place.url) }
-            Button("在另一窗格中打开", systemImage: "rectangle.split.2x1") { workspace.openInOtherPane(place.url) }
+            Button(L("在新标签页中打开"), systemImage: "plus.square.on.square") { workspace.openInNewTab(place.url) }
+            Button(L("在另一窗格中打开"), systemImage: "rectangle.split.2x1") { workspace.openInOtherPane(place.url) }
             Divider()
-            Button("拷贝路径", systemImage: "link") { workspace.copyPath([place.url]) }
-            Button("在终端中打开", systemImage: "terminal") { workspace.openInTerminal(place.url) }
-            Button("在访达中显示", systemImage: "macwindow") { workspace.revealInFinder([place.url]) }
+            Button(L("拷贝路径"), systemImage: "link") { workspace.copyPath([place.url]) }
+            Button(L("在终端中打开"), systemImage: "terminal") { workspace.openInTerminal(place.url) }
+            Button(L("在访达中显示"), systemImage: "macwindow") { workspace.revealInFinder([place.url]) }
             if !store.isFavorite(place.url) {
-                Button("添加到个人收藏", systemImage: "star") { store.addFavorite(place.url) }
+                Button(L("添加到个人收藏"), systemImage: "star") { store.addFavorite(place.url) }
             }
             extraMenu()
         }
@@ -188,7 +188,7 @@ struct SidebarView: View {
                 Text(saved.name).fontWeight(isOpen ? .semibold : .regular)
                 Spacer(minLength: 0)
                 if isOpen {
-                    Text("当前").font(.system(size: 10, weight: .medium)).foregroundStyle(saved.tint.color.onSidebarGlass(colorScheme))
+                    Text(L("当前")).font(.system(size: 10, weight: .medium)).foregroundStyle(saved.tint.color.onSidebarGlass(colorScheme))
                 }
             }
         } icon: {
@@ -199,13 +199,13 @@ struct SidebarView: View {
         .modifier(SidebarRowStyle(isSelected: false) {
             withAnimation(.easeInOut(duration: 0.35)) { workspace.open(saved) }
         })
-        .help("\(saved.summary)\n点击切换到这个工作区（布局和颜色）")
+        .help(L("\(saved.summary)\n点击切换到这个工作区（布局和颜色）"))
         .contextMenu {
-            Button("切换到这个工作区", systemImage: "arrow.up.forward.app") { workspace.open(saved) }
-            Button("用当前布局更新", systemImage: "arrow.triangle.2.circlepath") { workspace.updateSavedWorkspace(saved) }
-            Button("重命名…", systemImage: "pencil") { workspace.workspaceNameRequest = .rename(saved) }
+            Button(L("切换到这个工作区"), systemImage: "arrow.up.forward.app") { workspace.open(saved) }
+            Button(L("用当前布局更新"), systemImage: "arrow.triangle.2.circlepath") { workspace.updateSavedWorkspace(saved) }
+            Button(L("重命名…"), systemImage: "pencil") { workspace.workspaceNameRequest = .rename(saved) }
             Divider()
-            Button("删除", systemImage: "trash", role: .destructive) { workspace.deleteSavedWorkspace(saved) }
+            Button(L("删除"), systemImage: "trash", role: .destructive) { workspace.deleteSavedWorkspace(saved) }
         }
     }
 
@@ -282,7 +282,7 @@ private struct CapacityHairline: View {
                     .fill(fullness > 0.9 ? Color.orange : tint)
                     .frame(width: max(64 * fullness, 2.5), height: 2.5)
             }
-            .help("已用 \(Int((fullness * 100).rounded()))%")
+            .help(L("已用 \(Int((fullness * 100).rounded()))%"))
     }
 }
 
@@ -291,7 +291,7 @@ private struct TintDrawer: View {
     @State private var open = false
     @State private var closing: DispatchWorkItem?
 
-    private var title: String { workspace.openWorkspace.map { "工作区“\($0.name)”的颜色" } ?? "窗口颜色" }
+    private var title: String { workspace.openWorkspace.map { L("工作区“\($0.name)”的颜色") } ?? L("窗口颜色") }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -312,8 +312,8 @@ private struct TintDrawer: View {
                     .rotationEffect(.degrees(open ? 180 : 0))
             }
             .help(workspace.openWorkspace == nil
-                  ? "这个窗口还没有打开已存的工作区，颜色只用于这个窗口。存成工作区后颜色会跟着工作区走。"
-                  : "改变颜色会同时保存到这个工作区；切换到别的工作区时，窗口换成那个工作区的颜色。")
+                  ? L("这个窗口还没有打开已存的工作区，颜色只用于这个窗口。存成工作区后颜色会跟着工作区走。")
+                  : L("改变颜色会同时保存到这个工作区；切换到别的工作区时，窗口换成那个工作区的颜色。"))
             if open {
                 HStack(spacing: 7) {
                     ForEach(WorkspaceTint.allCases) { option in
@@ -333,7 +333,7 @@ private struct TintDrawer: View {
                         }
                         .buttonStyle(.plain)
                         .help(option.title)
-                        .accessibilityLabel("颜色：\(option.title)")
+                        .accessibilityLabel(L("颜色：\(option.title)"))
                     }
                 }
                 .transition(.move(edge: .bottom).combined(with: .opacity))

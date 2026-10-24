@@ -106,10 +106,10 @@ struct ColumnBrowserView: View {
         .overlay {
             if items.isEmpty, !tab.isLoading {
                 VStack(spacing: 6) {
-                    Text("文件夹为空").font(.callout).foregroundStyle(.tertiary)
+                    Text(L("文件夹为空")).font(.callout).foregroundStyle(.tertiary)
                     let hidden = tab.items.filter(\.isHidden).count
                     if hidden > 0, !AppSettings.shared.showHidden {
-                        Button("显示 \(hidden) 个隐藏项目") { AppSettings.shared.showHidden = true }
+                        Button(L("显示 \(hidden) 个隐藏项目")) { AppSettings.shared.showHidden = true }
                             .buttonStyle(.tintLink)
                             .font(.caption)
                     }
@@ -216,9 +216,9 @@ private struct PreviewColumn: View {
             Text(item.name).font(.headline).multilineTextAlignment(.center).lineLimit(3)
             Text(item.localizedKind).font(.caption).foregroundStyle(.secondary)
             Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 4) {
-                GridRow { Text("大小").foregroundStyle(.secondary); Text(Format.bytes(item.size)) }
-                GridRow { Text("修改").foregroundStyle(.secondary); Text(Format.date(item.modified)) }
-                GridRow { Text("创建").foregroundStyle(.secondary); Text(Format.date(item.created)) }
+                GridRow { Text(L("大小")).foregroundStyle(.secondary); Text(Format.bytes(item.size)) }
+                GridRow { Text(L("修改")).foregroundStyle(.secondary); Text(Format.date(item.modified)) }
+                GridRow { Text(L("创建")).foregroundStyle(.secondary); Text(Format.date(item.created)) }
             }
             .font(.system(size: 11))
             Spacer()

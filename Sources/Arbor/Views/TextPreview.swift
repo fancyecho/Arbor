@@ -92,19 +92,19 @@ struct TextPreview: View {
             HStack {
                 if isMarkdown, !editing {
                     GlassSegmented(selection: $showMarkdown, options: [
-                        .init(value: true, title: "预览", symbol: "eye"),
-                        .init(value: false, title: "源码", symbol: "chevron.left.forwardslash.chevron.right"),
+                        .init(value: true, title: L("预览"), symbol: "eye"),
+                        .init(value: false, title: L("源码"), symbol: "chevron.left.forwardslash.chevron.right"),
                     ], compact: true)
                 }
                 Spacer()
                 if editing {
-                    Button("取消") { editing = false }
+                    Button(L("取消")) { editing = false }
                         .buttonStyle(.glassCompact)
-                    Button("存储") { save() }
+                    Button(L("存储")) { save() }
                         .keyboardShortcut("s")
                         .buttonStyle(.glassProminentCompact)
                 } else {
-                    Button("编辑", systemImage: "pencil") {
+                    Button(L("编辑"), systemImage: "pencil") {
                         draft = text
                         editing = true
                     }
@@ -142,7 +142,7 @@ struct TextPreview: View {
             editing = false
             let url = item.url
             let loaded = await Task.detached { TextFile.read(url) }.value
-            text = loaded?.0 ?? "（无法以文本方式读取）"
+            text = loaded?.0 ?? L("（无法以文本方式读取）")
             encoding = loaded?.1 ?? .utf8
         }
     }
@@ -150,7 +150,7 @@ struct TextPreview: View {
     private func save() {
         do {
             let steps = try TextFile.save(draft, to: item.url, encoding: encoding)
-            FileHistory.shared.record("编辑“\(item.name)”", steps: steps)
+            FileHistory.shared.record(L("编辑“\(item.name)”"), steps: steps)
             text = draft
             editing = false
             error = nil

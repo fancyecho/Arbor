@@ -21,7 +21,7 @@ enum UndoError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .occupied(let name): "无法撤销：“\(name)”所在位置已有同名项目。"
+        case .occupied(let name): L("无法撤销：“\(name)”所在位置已有同名项目。")
         }
     }
 }

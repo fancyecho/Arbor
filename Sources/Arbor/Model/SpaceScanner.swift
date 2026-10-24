@@ -10,15 +10,15 @@ enum FileCategory: Int, CaseIterable, Sendable {
 
     var title: String {
         switch self {
-        case .video: "视频"
-        case .image: "图片"
-        case .audio: "音频"
-        case .document: "文档"
-        case .app: "应用"
-        case .developer: "开发"
-        case .archive: "映像与虚拟机"
-        case .cache: "缓存与日志"
-        case .other: "其他"
+        case .video: L("视频")
+        case .image: L("图片")
+        case .audio: L("音频")
+        case .document: L("文档")
+        case .app: L("应用")
+        case .developer: L("开发")
+        case .archive: L("映像与虚拟机")
+        case .cache: L("缓存与日志")
+        case .other: L("其他")
         }
     }
 
@@ -276,7 +276,7 @@ enum SpaceScanner {
                 }
             }
             if smallCount > 0 {
-                children.append(SpaceNode(name: "\(smallCount) 个更小的文件", kind: .smallFiles, size: smallSize,
+                children.append(SpaceNode(name: L("\(smallCount) 个更小的文件"), kind: .smallFiles, size: smallSize,
                                           fileCount: smallCount, categories: smallCategories))
             }
             children.sort { $0.size != $1.size ? $0.size > $1.size : $0.name < $1.name }
@@ -553,12 +553,12 @@ final class SpaceScan: Identifiable {
         let path = scanPath
         var info = stat()
         guard lstat(path, &info) == 0 else {
-            phase = .failed("无法读取这个位置。")
+            phase = .failed(L("无法读取这个位置。"))
             return
         }
         let device = info.st_dev
         guard let entries = try? FileManager.default.contentsOfDirectory(atPath: path) else {
-            phase = .failed("没有权限读取这个文件夹。")
+            phase = .failed(L("没有权限读取这个文件夹。"))
             return
         }
         // Files right at the top show up at once; each folder joins the chart as soon as it's done.

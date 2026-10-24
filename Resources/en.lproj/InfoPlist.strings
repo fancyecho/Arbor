@@ -1,0 +1,9 @@
+/* Info.plist, in English. */
+
+"NSAppleEventsUsageDescription" = "Arbor uses Apple events to open folders in Terminal.";
+"NSDesktopFolderUsageDescription" = "Arbor needs access to your Desktop to browse and manage its files.";
+"NSDocumentsFolderUsageDescription" = "Arbor needs access to your Documents to browse and manage its files.";
+"NSDownloadsFolderUsageDescription" = "Arbor needs access to your Downloads to browse and manage its files.";
+"NSNetworkVolumesUsageDescription" = "Arbor needs access to network volumes to browse and manage their files.";
+"NSRemovableVolumesUsageDescription" = "Arbor needs access to external disks to browse and manage their files.";
+"Arbor 标签页" = "Arbor Tab";

@@ -16,6 +16,8 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/Arbor"
 cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
 cp "$ROOT/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
+# Text is written in Chinese in the source; en.lproj holds the English (see Sources/Arbor/App/Localization.swift).
+cp -R "$ROOT/Resources/en.lproj" "$ROOT/Resources/zh-Hans.lproj" "$APP/Contents/Resources/"
 
 # Ad-hoc sign with an explicit designated requirement. An ad-hoc signature's default requirement is the
 # build's own hash, so macOS privacy permissions (Desktop, Documents, Full Disk Access…) were tied to one

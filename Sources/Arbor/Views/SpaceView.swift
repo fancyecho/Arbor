@@ -18,7 +18,7 @@ struct SpaceView: View {
     enum ListMode: String, CaseIterable, Identifiable {
         case contents, largest
         var id: Self { self }
-        var title: String { self == .contents ? "内容" : "最大的文件" }
+        var title: String { self == .contents ? L("内容") : L("最大的文件") }
     }
 
     private var index: SpaceIndex { SpaceIndex.shared }
@@ -34,7 +34,7 @@ struct SpaceView: View {
             } else if let scan, scan.isScanning {
                 waiting(scan)
             } else if scan != nil {
-                unavailable("这个文件夹不在上次的扫描结果里。", systemImage: "questionmark.folder", scanButton: true)
+                unavailable(L("这个文件夹不在上次的扫描结果里。"), systemImage: "questionmark.folder", scanButton: true)
             } else if Self.isVolumeRoot(url) {
                 VolumeLanding(url: url) { index.startScan(url) }
             } else {
@@ -62,9 +62,9 @@ struct SpaceView: View {
     private func waiting(_ scan: SpaceScan) -> some View {
         VStack(spacing: 14) {
             ProgressView().controlSize(.large)
-            Text("正在扫描…").font(.headline)
+            Text(L("正在扫描…")).font(.headline)
             ScanCounterLine(scan: scan)
-            Button("停止") { scan.cancel() }
+            Button(L("停止")) { scan.cancel() }
                 .buttonStyle(.glass)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -72,11 +72,11 @@ struct SpaceView: View {
 
     private func unavailable(_ message: String, systemImage: String, scanButton: Bool = false) -> some View {
         ContentUnavailableView {
-            Label("无法分析", systemImage: systemImage)
+            Label(L("无法分析"), systemImage: systemImage)
         } description: {
             Text(message)
         } actions: {
-            if scanButton { Button("扫描这个文件夹") { index.startScan(tab.url) }.buttonStyle(.glassProminent) }
+            if scanButton { Button(L("扫描这个文件夹")) { index.startScan(tab.url) }.buttonStyle(.glassProminent) }
         }
     }
 
@@ -134,8 +134,8 @@ struct SpaceView: View {
         VStack(alignment: .leading, spacing: 10) {
             CategoryBar(node: node, revision: scan.revision)
             GlassSegmented(selection: $listMode, options: [
-                .init(value: .contents, title: "内容", symbol: "list.bullet"),
-                .init(value: .largest, title: "最大的文件", symbol: "arrow.down.right.and.arrow.up.left"),
+                .init(value: .contents, title: L("内容"), symbol: "list.bullet"),
+                .init(value: .largest, title: L("最大的文件"), symbol: "arrow.down.right.and.arrow.up.left"),
             ], compact: true)
             let rows = rows(for: node, hidden: hidden, revision: scan.revision)
             let largest = rows.first?.size ?? 1
@@ -158,7 +158,7 @@ struct SpaceView: View {
                             }
                     }
                     if listMode == .contents, node.children.count > rows.count {
-                        Text("还有 \(node.children.count - rows.count) 项更小的项目")
+                        Text(L("还有 \(node.children.count - rows.count) 项更小的项目"))
                             .font(.caption).foregroundStyle(.tertiary).padding(.top, 6)
                     }
                 }
@@ -254,7 +254,7 @@ final class LayoutCache {
     /// One stable object for the volume's unaccounted space, so the list and the rings agree on it.
     func hidden(size: Int64) -> SpaceNode {
         if let hiddenNode, hiddenNode.size == size { return hiddenNode }
-        let node = SpaceNode(name: "系统与其他", kind: .hidden, size: size, fileCount: 0)
+        let node = SpaceNode(name: L("系统与其他"), kind: .hidden, size: size, fileCount: 0)
         hiddenNode = node
         return node
     }
@@ -296,23 +296,23 @@ private struct SpaceHeader: View {
                     ScanCounterLine(scan: scan)
                 } else if scan.refreshing > 0 {
                     ProgressView().controlSize(.mini)
-                    Text("正在重新扫描…").foregroundStyle(.secondary)
+                    Text(L("正在重新扫描…")).foregroundStyle(.secondary)
                 } else {
                     Image(systemName: "chart.pie.fill").foregroundStyle(tint)
                     Text(summary).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer(minLength: 8)
                 GlassSegmented(selection: $settings.spaceColoring, options: [
-                    .init(value: .folders, title: "文件夹", symbol: "folder"),
-                    .init(value: .types, title: "类型", symbol: "square.stack.3d.up"),
+                    .init(value: .folders, title: L("文件夹"), symbol: "folder"),
+                    .init(value: .types, title: L("类型"), symbol: "square.stack.3d.up"),
                 ], compact: true)
-                .help("按文件夹或按文件类型上色")
+                .help(L("按文件夹或按文件类型上色"))
                 if scan.isScanning {
                     Button { scan.cancel() } label: { Image(systemName: "stop.fill") }
-                        .buttonStyle(.glassCompact).help("停止扫描")
+                        .buttonStyle(.glassCompact).help(L("停止扫描"))
                 } else {
                     Button(action: onRescan) { Image(systemName: "arrow.clockwise") }
-                        .buttonStyle(.glassCompact).help(node === scan.root ? "重新扫描" : "重新扫描这个文件夹")
+                        .buttonStyle(.glassCompact).help(node === scan.root ? L("重新扫描") : L("重新扫描这个文件夹"))
                 }
             }
             .font(.system(size: 11))
@@ -326,9 +326,9 @@ private struct SpaceHeader: View {
     }
 
     private var summary: String {
-        var parts = ["\(Format.bytes(node.size))", "\(node.fileCount.formatted()) 个文件"]
+        var parts = ["\(Format.bytes(node.size))", L("\(node.fileCount.formatted()) 个文件")]
         if case .finished(let seconds) = scan.phase, node === scan.root {
-            parts.append(String(format: "扫描用时 %.1f 秒", seconds))
+            parts.append(String(format: L("扫描用时 %.1f 秒"), seconds))
         }
         return parts.joined(separator: " · ")
     }
@@ -338,7 +338,7 @@ private struct ScanCounterLine: View {
     let scan: SpaceScan
 
     var body: some View {
-        Text("已扫描 \(Format.bytes(scan.scannedBytes)) · \(scan.scannedItems.formatted()) 个文件")
+        Text(L("已扫描 \(Format.bytes(scan.scannedBytes)) · \(scan.scannedItems.formatted()) 个文件"))
             .monospacedDigit()
             .foregroundStyle(.secondary)
             .lineLimit(1)
@@ -373,11 +373,11 @@ private struct CapacityBar: View {
             }
             .frame(height: 8)
             HStack(spacing: 12) {
-                legend(tint, scanning ? "已扫描" : "可见文件", Int64(scannedPart))
-                if other > 0 { legend(Color.secondary.opacity(0.6), "系统与其他", Int64(other)) }
-                if volume.purgeable > 0 { legend(.clear, "可由系统清除", volume.purgeable, dashed: true) }
+                legend(tint, scanning ? L("已扫描") : L("可见文件"), Int64(scannedPart))
+                if other > 0 { legend(Color.secondary.opacity(0.6), L("系统与其他"), Int64(other)) }
+                if volume.purgeable > 0 { legend(.clear, L("可由系统清除"), volume.purgeable, dashed: true) }
                 Spacer(minLength: 0)
-                Text("可用 \(Format.bytes(volume.available + volume.purgeable)) / \(Format.bytes(volume.total))")
+                Text(L("可用 \(Format.bytes(volume.available + volume.purgeable)) / \(Format.bytes(volume.total))"))
                     .foregroundStyle(.secondary)
             }
             .font(.system(size: 10.5))
@@ -417,7 +417,7 @@ private struct CenterLabel: View {
                     Image(systemName: "chevron.up").font(.system(size: 10, weight: .semibold)).foregroundStyle(.tertiary)
                 }
                 if diameter > 80 {
-                Text(node.kind == .smallFiles ? "更小的文件" : node.name)
+                Text(node.kind == .smallFiles ? L("更小的文件") : node.name)
                     .font(.system(size: roomy ? 12 : 10.5, weight: .semibold))
                     .lineLimit(roomy ? 2 : 1)
                     .multilineTextAlignment(.center)
@@ -431,7 +431,7 @@ private struct CenterLabel: View {
                     .contentTransition(.numericText())
                 if roomy || !isRoot {
                     if isRoot {
-                        Text(scanning ? "扫描中…" : "\(node.fileCount.formatted()) 个文件")
+                        Text(scanning ? L("扫描中…") : L("\(node.fileCount.formatted()) 个文件"))
                             .font(.system(size: 10.5)).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)
                     } else if total > 0 {
                         Text(share)
@@ -441,7 +441,13 @@ private struct CenterLabel: View {
             }
             .frame(width: diameter * 0.8)
             .frame(width: diameter, height: diameter)
-            .background { Circle().fill(.ultraThinMaterial) }
+            // A plain wash, not a material: a material is a live blur of what's behind it, and over the
+            // redrawing rings its backdrop could go stale — a pale patch over part of the disc that
+            // screenshots (which composite afresh) never caught. Only empty hole lies behind it anyway.
+            .background {
+                Circle().fill(LinearGradient(colors: [Color.primary.opacity(0.055), Color.primary.opacity(0.03)],
+                                             startPoint: .top, endPoint: .bottom))
+            }
             .overlay { Circle().strokeBorder(Surface.hairline) }
             .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
         }
@@ -450,8 +456,8 @@ private struct CenterLabel: View {
     private var share: String {
         let percent = Double(node.size) / Double(max(total, 1)) * 100
         let text = percent < 0.1 ? "<0.1%" : String(format: percent < 10 ? "%.1f%%" : "%.0f%%", percent)
-        if node.kind == .smallFiles { return "\(node.fileCount.formatted()) 个 · \(text)" }
-        return "占 \(text)"
+        if node.kind == .smallFiles { return L("\(node.fileCount.formatted()) 个 · \(text)") }
+        return L("占 \(text)")
     }
 }
 
@@ -490,7 +496,7 @@ private struct CategoryBar: View {
             .foregroundStyle(.secondary)
             .lineLimit(1)
         }
-        .help(parts.map { "\($0.0.title)：\(Format.bytes($0.1))" }.joined(separator: "\n"))
+        .help(parts.map { L("\($0.0.title)：\(Format.bytes($0.1))") }.joined(separator: "\n"))
     }
 }
 
@@ -527,7 +533,7 @@ private struct SpaceRow: View {
                 }
                 .buttonStyle(.borderless)
                 .foregroundStyle(.secondary)
-                .help("加入暂存架：收集要清理的项目，再一起移到废纸篓")
+                .help(L("加入暂存架：收集要清理的项目，再一起移到废纸篓"))
             }
             GeometryReader { proxy in
                 Capsule().fill(Color.primary.opacity(0.07))
@@ -544,7 +550,7 @@ private struct SpaceRow: View {
                 Button(action: onOpen) { Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold)) }
                     .buttonStyle(.borderless)
                     .foregroundStyle(.tertiary)
-                    .help("进入“\(node.name)”")
+                    .help(L("进入“\(node.name)”"))
             } else {
                 Color.clear.frame(width: 12)
             }
@@ -590,8 +596,8 @@ private struct SpaceFootnotes: View {
             if scan.unreadableFolders > 0, node === scan.root, !scan.isScanning {
                 HStack(spacing: 6) {
                     Image(systemName: "lock").foregroundStyle(.secondary)
-                    Text("\(scan.unreadableFolders) 个文件夹没有权限读取，实际占用可能更多。")
-                    Button("授予完全磁盘访问权限…") {
+                    Text(L("\(scan.unreadableFolders) 个文件夹没有权限读取，实际占用可能更多。"))
+                    Button(L("授予完全磁盘访问权限…")) {
                         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
                             NSWorkspace.shared.open(url)
                         }
@@ -602,8 +608,8 @@ private struct SpaceFootnotes: View {
             if let trash = trashNode, trash.size > 50_000_000 {
                 HStack(spacing: 6) {
                     Image(systemName: "trash").foregroundStyle(.secondary)
-                    Text("废纸篓里还有 \(Format.bytes(trash.size))，清倒后才会真正释放。")
-                    Button("打开废纸篓") { workspace.activeTab.navigate(to: Places.trash.url) }
+                    Text(L("废纸篓里还有 \(Format.bytes(trash.size))，清倒后才会真正释放。"))
+                    Button(L("打开废纸篓")) { workspace.activeTab.navigate(to: Places.trash.url) }
                         .buttonStyle(.tintLink)
                 }
             }
@@ -641,15 +647,15 @@ private struct VolumeLanding: View {
                     Image(systemName: "internaldrive").font(.system(size: 22)).foregroundStyle(.secondary)
                     if let volume {
                         Text(Format.bytes(volume.used)).font(.system(size: 18, weight: .semibold, design: .rounded))
-                        Text("已用，共 \(Format.bytes(volume.total))").font(.caption).foregroundStyle(.secondary)
+                        Text(L("已用，共 \(Format.bytes(volume.total))")).font(.caption).foregroundStyle(.secondary)
                     }
                 }
             }
             .frame(width: 150, height: 150)
             Text(volume?.name ?? url.lastPathComponent).font(.title3.weight(.semibold))
-            Text("扫描整个磁盘，看看空间都去哪儿了。扫描只读取文件信息，不会改动任何东西。")
+            Text(L("扫描整个磁盘，看看空间都去哪儿了。扫描只读取文件信息，不会改动任何东西。"))
                 .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 320)
-            Button("扫描磁盘", systemImage: "sparkle.magnifyingglass", action: onScan)
+            Button(L("扫描磁盘"), systemImage: "sparkle.magnifyingglass", action: onScan)
                 .buttonStyle(.glassProminent)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

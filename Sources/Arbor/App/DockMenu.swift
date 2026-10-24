@@ -5,7 +5,7 @@ final class DockMenu: NSObject {
     @MainActor
     func build() -> NSMenu {
         let menu = NSMenu()
-        menu.addItem(item("新建窗口", #selector(newWindow)))
+        menu.addItem(item(L("新建窗口"), #selector(newWindow)))
 
         let favorites = SidebarStore.shared.favorites.filter(\.exists)
         if !favorites.isEmpty {
@@ -26,7 +26,7 @@ final class DockMenu: NSObject {
                 entry.representedObject = workspace.id
                 submenu.addItem(entry)
             }
-            let parent = NSMenuItem(title: "工作区", action: nil, keyEquivalent: "")
+            let parent = NSMenuItem(title: L("工作区"), action: nil, keyEquivalent: "")
             parent.submenu = submenu
             menu.addItem(parent)
         }

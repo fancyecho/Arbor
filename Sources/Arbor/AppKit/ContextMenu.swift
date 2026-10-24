@@ -38,7 +38,8 @@ enum ContextMenuBuilder {
     /// Sections separated by dividers, minus the entries hidden in Settings.
     static func sections(workspace ws: WorkspaceState, tab: TabState, selected: [FileItem],
                          includeOpenWith: Bool = true) -> [[MenuEntry]] {
-        let hidden = AppSettings.shared.hiddenMenuItems
+        // Settings stores the Chinese names; entries carry their titles (and keys) in the app's language.
+        let hidden = Set(AppSettings.shared.hiddenMenuItems.map { L(key: $0) })
         return allSections(workspace: ws, tab: tab, selected: selected, includeOpenWith: includeOpenWith)
             .map { $0.filter { !hidden.contains($0.key ?? $0.title) } }
             .filter { !$0.isEmpty }
@@ -48,30 +49,30 @@ enum ContextMenuBuilder {
     private static func allSections(workspace ws: WorkspaceState, tab: TabState, selected: [FileItem],
                                     includeOpenWith: Bool) -> [[MenuEntry]] {
         let urls = selected.map(\.url)
-        let pasteEntry = MenuEntry("粘贴", symbol: "doc.on.clipboard", isEnabled: ws.canPaste) { ws.paste() }
+        let pasteEntry = MenuEntry(L("粘贴"), symbol: "doc.on.clipboard", isEnabled: ws.canPaste) { ws.paste() }
 
         guard !selected.isEmpty else {
             return [
                 [
-                    MenuEntry("新建文件夹", symbol: "folder.badge.plus") { ws.newFolder() },
-                    MenuEntry("新建文件", symbol: "doc.badge.plus", children: templateEntries(ws)),
+                    MenuEntry(L("新建文件夹"), symbol: "folder.badge.plus") { ws.newFolder() },
+                    MenuEntry(L("新建文件"), symbol: "doc.badge.plus", children: templateEntries(ws)),
                 ],
                 [pasteEntry],
                 [
-                    MenuEntry("拷贝当前路径", symbol: "link") { ws.copyPath([tab.url]) },
-                    MenuEntry("拷贝路径为", symbol: "link.badge.plus", children: [pathEntries(ws, [tab.url])]),
-                    MenuEntry("在终端中打开", symbol: "terminal") { ws.openInTerminal(tab.url) },
-                    MenuEntry("在\(AppSettings.shared.editorName)中打开", symbol: "chevron.left.forwardslash.chevron.right", key: "在编辑器中打开") {
+                    MenuEntry(L("拷贝当前路径"), symbol: "link") { ws.copyPath([tab.url]) },
+                    MenuEntry(L("拷贝路径为"), symbol: "link.badge.plus", children: [pathEntries(ws, [tab.url])]),
+                    MenuEntry(L("在终端中打开"), symbol: "terminal") { ws.openInTerminal(tab.url) },
+                    MenuEntry(L("在\(AppSettings.shared.editorName)中打开"), symbol: "chevron.left.forwardslash.chevron.right", key: L("在编辑器中打开")) {
                         ws.openInEditor([tab.url])
                     },
-                    MenuEntry("在访达中显示", symbol: "macwindow") { ws.revealInFinder([tab.url]) },
+                    MenuEntry(L("在访达中显示"), symbol: "macwindow") { ws.revealInFinder([tab.url]) },
                 ],
                 commandEntries(ws, []),
                 [
-                    MenuEntry(AppSettings.shared.showHidden ? "隐藏隐藏文件" : "显示隐藏文件", symbol: "eye") { ws.toggleHidden() },
-                    MenuEntry("批量重命名全部…", symbol: "character.cursor.ibeam") { ws.batchRename([]) },
-                    MenuEntry("导出目录树", symbol: "list.bullet.indent") { ws.exportTree(tab.url) },
-                    MenuEntry("分析空间占用", symbol: "chart.pie") { ws.analyzeSpace() },
+                    MenuEntry(AppSettings.shared.showHidden ? L("隐藏隐藏文件") : L("显示隐藏文件"), symbol: "eye") { ws.toggleHidden() },
+                    MenuEntry(L("批量重命名全部…"), symbol: "character.cursor.ibeam") { ws.batchRename([]) },
+                    MenuEntry(L("导出目录树"), symbol: "list.bullet.indent") { ws.exportTree(tab.url) },
+                    MenuEntry(L("分析空间占用"), symbol: "chart.pie") { ws.analyzeSpace() },
                 ],
             ]
         }
@@ -79,56 +80,56 @@ enum ContextMenuBuilder {
         let single = selected.count == 1 ? selected[0] : nil
         let folder = single.flatMap { $0.isNavigable ? $0.url : TabState.resolvedDirectory($0.url) }
 
-        var open: [MenuEntry] = [MenuEntry("打开", symbol: "arrow.up.forward.app") { ws.openSelection(urls) }]
+        var open: [MenuEntry] = [MenuEntry(L("打开"), symbol: "arrow.up.forward.app") { ws.openSelection(urls) }]
         // Apps, bundles, libraries… open as one thing; this steps inside instead, like Finder.
         if let single, single.isPackage {
-            open.append(MenuEntry("显示包内容", symbol: "shippingbox") {
+            open.append(MenuEntry(L("显示包内容"), symbol: "shippingbox") {
                 ws.activate(ws.panes.first { $0.tabs.contains { $0 === tab } } ?? ws.activePane)
                 tab.navigate(to: single.url)
             })
         }
         if includeOpenWith, let single, !single.isNavigable {
-            open.append(MenuEntry("打开方式", symbol: "app.badge", children: [openWithEntries(for: single.url, ws: ws, urls: urls)]))
+            open.append(MenuEntry(L("打开方式"), symbol: "app.badge", children: [openWithEntries(for: single.url, ws: ws, urls: urls)]))
         }
         if let folder {
-            open.append(MenuEntry("在新标签页中打开", symbol: "plus.square.on.square") { ws.openInNewTab(folder) })
-            open.append(MenuEntry("在另一窗格中打开", symbol: "rectangle.split.2x1") { ws.openInOtherPane(folder) })
+            open.append(MenuEntry(L("在新标签页中打开"), symbol: "plus.square.on.square") { ws.openInNewTab(folder) })
+            open.append(MenuEntry(L("在另一窗格中打开"), symbol: "rectangle.split.2x1") { ws.openInOtherPane(folder) })
             if !SidebarStore.shared.isFavorite(folder) {
-                open.append(MenuEntry("添加到个人收藏", symbol: "star") { SidebarStore.shared.addFavorite(folder) })
+                open.append(MenuEntry(L("添加到个人收藏"), symbol: "star") { SidebarStore.shared.addFavorite(folder) })
             }
-            open.append(MenuEntry("分析空间占用", symbol: "chart.pie") { ws.analyzeSpace(folder) })
+            open.append(MenuEntry(L("分析空间占用"), symbol: "chart.pie") { ws.analyzeSpace(folder) })
         }
-        open.append(MenuEntry("快速查看", symbol: "eye") { ws.quickLook(urls) })
+        open.append(MenuEntry(L("快速查看"), symbol: "eye") { ws.quickLook(urls) })
 
         var transfer: [MenuEntry] = [
-            MenuEntry("剪切", symbol: "scissors") { ws.cut(urls) },
-            MenuEntry("拷贝", symbol: "doc.on.doc") { ws.copy(urls) },
+            MenuEntry(L("剪切"), symbol: "scissors") { ws.cut(urls) },
+            MenuEntry(L("拷贝"), symbol: "doc.on.doc") { ws.copy(urls) },
             pasteEntry,
-            MenuEntry("复制", symbol: "plus.square.on.square") { ws.duplicate(urls) },
-            MenuEntry("加入暂存架", symbol: "tray.and.arrow.down") { ws.addToShelf(urls) },
+            MenuEntry(L("复制"), symbol: "plus.square.on.square") { ws.duplicate(urls) },
+            MenuEntry(L("加入暂存架"), symbol: "tray.and.arrow.down") { ws.addToShelf(urls) },
         ]
         if ws.otherPane != nil {
-            transfer.append(MenuEntry("拷贝到另一窗格", symbol: "arrow.right.doc.on.clipboard") { ws.copyToOtherPane() })
-            transfer.append(MenuEntry("移动到另一窗格", symbol: "arrow.right.square") { ws.copyToOtherPane(move: true) })
+            transfer.append(MenuEntry(L("拷贝到另一窗格"), symbol: "arrow.right.doc.on.clipboard") { ws.copyToOtherPane() })
+            transfer.append(MenuEntry(L("移动到另一窗格"), symbol: "arrow.right.square") { ws.copyToOtherPane(move: true) })
         }
 
         return [
             open,
             transfer,
             [
-                MenuEntry("重命名", symbol: "pencil", isEnabled: single != nil) { ws.rename(single?.url) },
-                MenuEntry("批量重命名…", symbol: "character.cursor.ibeam") { ws.batchRename(urls) },
-                MenuEntry("移到废纸篓", symbol: "trash") { ws.moveToTrash(urls) },
+                MenuEntry(L("重命名"), symbol: "pencil", isEnabled: single != nil) { ws.rename(single?.url) },
+                MenuEntry(L("批量重命名…"), symbol: "character.cursor.ibeam") { ws.batchRename(urls) },
+                MenuEntry(L("移到废纸篓"), symbol: "trash") { ws.moveToTrash(urls) },
             ],
             [
-                MenuEntry("拷贝路径", symbol: "link") { ws.copyPath(urls) },
-                MenuEntry("拷贝路径为", symbol: "link.badge.plus", children: [pathEntries(ws, urls)]),
-                MenuEntry("在终端中打开", symbol: "terminal", isEnabled: folder != nil) { ws.openInTerminal(folder) },
-                MenuEntry("在\(AppSettings.shared.editorName)中打开", symbol: "chevron.left.forwardslash.chevron.right", key: "在编辑器中打开") {
+                MenuEntry(L("拷贝路径"), symbol: "link") { ws.copyPath(urls) },
+                MenuEntry(L("拷贝路径为"), symbol: "link.badge.plus", children: [pathEntries(ws, urls)]),
+                MenuEntry(L("在终端中打开"), symbol: "terminal", isEnabled: folder != nil) { ws.openInTerminal(folder) },
+                MenuEntry(L("在\(AppSettings.shared.editorName)中打开"), symbol: "chevron.left.forwardslash.chevron.right", key: L("在编辑器中打开")) {
                     ws.openInEditor(urls)
                 },
-                MenuEntry("在访达中显示", symbol: "macwindow") { ws.revealInFinder(urls) },
-                MenuEntry("显示简介", symbol: "info.circle") { ws.showInspector = true },
+                MenuEntry(L("在访达中显示"), symbol: "macwindow") { ws.revealInFinder(urls) },
+                MenuEntry(L("显示简介"), symbol: "info.circle") { ws.showInspector = true },
             ],
             [tagEntries(ws, urls), toolEntries(ws, urls, single: single, folder: folder)] + imageEntries(ws, urls),
             commandEntries(ws, urls),
@@ -141,25 +142,25 @@ enum ContextMenuBuilder {
             entry.isChecked = urls.allSatisfy { FinderTags.tags(of: $0).contains(tag.name) }
             return entry
         }
-        return MenuEntry("标签", symbol: "tag", children: [entries])
+        return MenuEntry(L("标签"), symbol: "tag", children: [entries])
     }
 
     /// "图片" submenu, only when everything selected is an image.
     private static func imageEntries(_ ws: WorkspaceState, _ urls: [URL]) -> [MenuEntry] {
         guard !urls.isEmpty, urls.allSatisfy(ImageTools.isImage) else { return [] }
         let convert = ImageFormat.allCases.map { format in
-            MenuEntry("转换为 \(format.title)") { ws.runImageJob(.convert(format, maxPixel: nil), urls) }
+            MenuEntry(L("转换为 \(format.title)")) { ws.runImageJob(.convert(format, maxPixel: nil), urls) }
         }
         let resize = ([3840, 1920, 1280, 800] as [Int]).map { pixels in
-            MenuEntry("缩小到长边 \(pixels) 像素") { ws.runImageJob(.convert(.jpeg, maxPixel: pixels), urls) }
+            MenuEntry(L("缩小到长边 \(pixels) 像素")) { ws.runImageJob(.convert(.jpeg, maxPixel: pixels), urls) }
         }
         let other = [
-            MenuEntry("向左旋转", symbol: "rotate.left") { ws.runImageJob(.rotate(clockwise: false), urls) },
-            MenuEntry("向右旋转", symbol: "rotate.right") { ws.runImageJob(.rotate(clockwise: true), urls) },
-            MenuEntry("合成 PDF", symbol: "doc.richtext") { ws.runImageJob(.pdf, urls) },
-            MenuEntry("移除背景", symbol: "person.crop.rectangle") { ws.runImageJob(.removeBackground, urls) },
+            MenuEntry(L("向左旋转"), symbol: "rotate.left") { ws.runImageJob(.rotate(clockwise: false), urls) },
+            MenuEntry(L("向右旋转"), symbol: "rotate.right") { ws.runImageJob(.rotate(clockwise: true), urls) },
+            MenuEntry(L("合成 PDF"), symbol: "doc.richtext") { ws.runImageJob(.pdf, urls) },
+            MenuEntry(L("移除背景"), symbol: "person.crop.rectangle") { ws.runImageJob(.removeBackground, urls) },
         ]
-        return [MenuEntry("图片", symbol: "photo", children: [convert, resize, other])]
+        return [MenuEntry(L("图片"), symbol: "photo", children: [convert, resize, other])]
     }
 
     private static func templateEntries(_ ws: WorkspaceState) -> [[MenuEntry]] {
@@ -169,26 +170,26 @@ enum ContextMenuBuilder {
                 ws.newFile(from: template)
             }
         }
-        return [templates, [MenuEntry("打开模板文件夹…", symbol: "folder") { ws.openTemplatesFolder() }]]
+        return [templates, [MenuEntry(L("打开模板文件夹…"), symbol: "folder") { ws.openTemplatesFolder() }]]
     }
 
     private static func toolEntries(_ ws: WorkspaceState, _ urls: [URL], single: FileItem?, folder: URL?) -> MenuEntry {
         var tools: [MenuEntry] = [
-            MenuEntry("用所选项目新建文件夹", symbol: "folder.badge.plus") { ws.newFolderWithSelection(urls) },
-            MenuEntry("制作替身", symbol: "arrowshape.turn.up.right") { ws.makeLinks(alias: true, urls) },
-            MenuEntry("创建符号链接", symbol: "link") { ws.makeLinks(alias: false, urls) },
-            MenuEntry("计算哈希（MD5 / SHA）", symbol: "number") { ws.showHashes(urls) },
+            MenuEntry(L("用所选项目新建文件夹"), symbol: "folder.badge.plus") { ws.newFolderWithSelection(urls) },
+            MenuEntry(L("制作替身"), symbol: "arrowshape.turn.up.right") { ws.makeLinks(alias: true, urls) },
+            MenuEntry(L("创建符号链接"), symbol: "link") { ws.makeLinks(alias: false, urls) },
+            MenuEntry(L("计算哈希（MD5 / SHA）"), symbol: "number") { ws.showHashes(urls) },
         ]
         if let folder {
-            tools.append(MenuEntry("平铺文件夹", symbol: "square.stack.3d.down.right") { ws.flatten(folder) })
-            tools.append(MenuEntry("导出目录树", symbol: "list.bullet.indent") { ws.exportTree(folder) })
+            tools.append(MenuEntry(L("平铺文件夹"), symbol: "square.stack.3d.down.right") { ws.flatten(folder) })
+            tools.append(MenuEntry(L("导出目录树"), symbol: "list.bullet.indent") { ws.exportTree(folder) })
         }
-        return MenuEntry("工具", symbol: "wrench.and.screwdriver", children: [tools])
+        return MenuEntry(L("工具"), symbol: "wrench.and.screwdriver", children: [tools])
     }
 
     private static func pathEntries(_ ws: WorkspaceState, _ urls: [URL]) -> [MenuEntry] {
         PathStyle.allCases.map { style in
-            MenuEntry(style.title + "　" + PathFormatter.format(urls.prefix(1).map { $0 }, style)) {
+            MenuEntry(style.title + L("　") + PathFormatter.format(urls.prefix(1).map { $0 }, style)) {
                 ws.copyPath(urls, as: style)
             }
         }
@@ -203,7 +204,7 @@ enum ContextMenuBuilder {
                 ws.run(command, on: urls)
             }
         }
-        return [MenuEntry("自定义命令", symbol: "command", children: [items])]
+        return [MenuEntry(L("自定义命令"), symbol: "command", children: [items])]
     }
 
     private static func openWithEntries(for url: URL, ws: WorkspaceState, urls: [URL]) -> [MenuEntry] {
@@ -212,7 +213,7 @@ enum ContextMenuBuilder {
         if let defaultApp { apps.removeAll { $0 == defaultApp }; apps.insert(defaultApp, at: 0) }
         return apps.prefix(20).map { app in
             var name = FileManager.default.displayName(atPath: app.path)
-            if app == defaultApp { name += "（默认）" }
+            if app == defaultApp { name += L("（默认）") }
             let icon = NSWorkspace.shared.icon(forFile: app.path)
             icon.size = NSSize(width: 16, height: 16)
             return MenuEntry(name, image: icon) { ws.open(with: app, urls) }

@@ -525,7 +525,7 @@ private struct PaneGutter: View {
                 if cursorPushed { NSCursor.pop() }
                 cursorPushed = false
             }
-            .help("拖动调整宽度，双击恢复等宽")
+            .help(L("拖动调整宽度，双击恢复等宽"))
     }
 
     /// Exactly one push per pop, however often hover flips while the gutter slides under the pointer.

@@ -207,10 +207,10 @@ final class Updater {
 
         var errorDescription: String? {
             switch self {
-            case .server(let code): "GitHub 返回了错误（\(code)）。"
-            case .badArchive: "下载的文件里没有找到 Arbor.app。"
-            case .wrongApp: "下载的应用不是 Arbor，已取消更新。"
-            case .notWritable(let path): "没有权限替换 \(path)。请把 Arbor 放到“应用程序”文件夹，或手动下载更新。"
+            case .server(let code): L("GitHub 返回了错误（\(code)）。")
+            case .badArchive: L("下载的文件里没有找到 Arbor.app。")
+            case .wrongApp: L("下载的应用不是 Arbor，已取消更新。")
+            case .notWritable(let path): L("没有权限替换 \(path)。请把 Arbor 放到“应用程序”文件夹，或手动下载更新。")
             }
         }
     }

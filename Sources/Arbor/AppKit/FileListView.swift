@@ -188,6 +188,7 @@ struct FileListView: NSViewRepresentable {
             let selectionChanged = selectedURLs() != view.selection
             if tint != view.tint {
                 tint = view.tint
+                table.tint = view.tint
                 if let scroll = table.enclosingScrollView { SlimScroller.install(on: scroll, tint: view.tint) }
                 table.enumerateAvailableRowViews { rowView, _ in
                     (rowView as? TintedRowView)?.tint = view.tint
@@ -263,7 +264,7 @@ struct FileListView: NSViewRepresentable {
                 menu.addItem(item)
             }
             menu.addItem(.separator())
-            menu.addItem(ClosureMenuItem(title: "恢复默认列") { settings.listColumns = ["modified", "size", "kind"] })
+            menu.addItem(ClosureMenuItem(title: L("恢复默认列")) { settings.listColumns = ["modified", "size", "kind"] })
         }
 
         @objc func didScroll(_ notification: Notification) {
@@ -478,16 +479,16 @@ struct FileListView: NSViewRepresentable {
                 return view
             }()
             let name = Places.displayName(for: destination)
-            let verb = operation == .move ? "移动" : "拷贝"
+            let verb = operation == .move ? L("移动") : L("拷贝")
             let detail: String
             if operation == .move {
-                detail = "同一磁盘 · 按住 ⌥ 改为拷贝 · 可撤销"
+                detail = L("同一磁盘 · 按住 ⌥ 改为拷贝 · 可撤销")
             } else if sameVolume {
-                detail = "按住了 ⌥，将拷贝 · 可撤销"
+                detail = L("按住了 ⌥，将拷贝 · 可撤销")
             } else {
-                detail = "不同磁盘，将拷贝 · 可撤销"
+                detail = L("不同磁盘，将拷贝 · 可撤销")
             }
-            hint.update(title: "\(verb) \(count) 项到“\(name)”", detail: detail, tint: tint)
+            hint.update(title: L("\(verb) \(count) 项到“\(name)”"), detail: detail, tint: tint)
             var point = scroll.convert(info.draggingLocation, from: nil)
             point.x = min(point.x + 18, scroll.bounds.width - hint.frame.width - 8)
             point.y = scroll.isFlipped ? point.y + 18 : point.y - 18 - hint.frame.height
@@ -742,7 +743,82 @@ final class FileTableView: NSTableView {
 
     override func mouseDown(with event: NSEvent) {
         onFocus?()
-        super.mouseDown(with: event)
+        let point = convert(event.locationInWindow, from: nil)
+        // Like Finder: a press on a file's icon or name grabs the file (click, drag out, double-click);
+        // a press anywhere else (blank space, the other columns) can draw a selection rectangle.
+        guard event.clickCount == 1, !grabsFile(at: point) else { return super.mouseDown(with: event) }
+        trackMarquee(from: event)
+    }
+
+    private var marquee: MarqueeView?
+    /// Workspace color for the selection rectangle.
+    var tint: NSColor = .controlAccentColor
+
+    /// Whether a press here lands on a file itself: its icon or name, or any part of an already selected row
+    /// (so a selection can still be dragged out from wherever it's held).
+    private func grabsFile(at point: NSPoint) -> Bool {
+        let row = row(at: point)
+        guard row >= 0 else { return false }
+        if selectedRowIndexes.contains(row) { return true }
+        let column = column(at: point)
+        guard column >= 0, tableColumns[column].identifier == FileListView.Column.name.identifier,
+              let cell = view(atColumn: column, row: row, makeIfNecessary: false) as? FileCellView,
+              let content = cell.contentFrame else { return false }
+        return content.insetBy(dx: -3, dy: -2).contains(cell.convert(point, from: self))
+    }
+
+    /// Drags out a selection rectangle; every row it touches is selected. ⌘ toggles the rows it touches,
+    /// ⇧ adds them. A press that doesn't move is an ordinary click.
+    private func trackMarquee(from down: NSEvent) {
+        guard let window else { return super.mouseDown(with: down) }
+        let start = convert(down.locationInWindow, from: nil)
+        let flags = down.modifierFlags
+        let base = flags.contains(.command) || flags.contains(.shift) ? selectedRowIndexes : IndexSet()
+        var dragging = false
+        var last = down
+        NSEvent.startPeriodicEvents(afterDelay: 0.1, withPeriod: 0.05)
+        defer {
+            NSEvent.stopPeriodicEvents()
+            marquee?.removeFromSuperview()
+            marquee = nil
+        }
+        while let event = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp, .periodic]) {
+            if event.type == .leftMouseUp {
+                guard dragging else {
+                    // A plain click: hand it to the table as if we'd never looked.
+                    window.postEvent(event, atStart: true)
+                    return super.mouseDown(with: down)
+                }
+                return
+            }
+            if event.type == .leftMouseDragged { last = event }
+            // Holding still past the edge keeps scrolling (periodic events), like Finder.
+            autoscroll(with: last)
+            let point = convert(last.locationInWindow, from: nil)
+            if !dragging {
+                guard hypot(point.x - start.x, point.y - start.y) > 3 else { continue }
+                dragging = true
+            }
+            let rect = NSRect(x: min(start.x, point.x), y: min(start.y, point.y),
+                              width: abs(point.x - start.x), height: abs(point.y - start.y))
+                .intersection(bounds)
+            showMarquee(rect)
+            let range = rows(in: rect)
+            let touched = IndexSet(integersIn: range.location..<(range.location + range.length))
+            let selection = flags.contains(.command) ? base.symmetricDifference(touched) : base.union(touched)
+            if selection != selectedRowIndexes { selectRowIndexes(selection, byExtendingSelection: false) }
+        }
+    }
+
+    private func showMarquee(_ rect: NSRect) {
+        let view = marquee ?? {
+            let view = MarqueeView()
+            addSubview(view, positioned: .above, relativeTo: nil)
+            marquee = view
+            return view
+        }()
+        view.tint = tint
+        view.frame = rect
     }
 
     override func keyDown(with event: NSEvent) {
@@ -756,6 +832,22 @@ final class FileTableView: NSTableView {
         if row(at: point) < 0 { deselectAll(nil) }
         return super.menu(for: event)
     }
+}
+
+/// The rubber band drawn while drag-selecting.
+final class MarqueeView: NSView {
+    var tint: NSColor = .controlAccentColor { didSet { needsDisplay = true } }
+
+    override func draw(_ dirtyRect: NSRect) {
+        tint.withAlphaComponent(0.12).setFill()
+        bounds.fill()
+        tint.withAlphaComponent(0.55).setStroke()
+        let border = NSBezierPath(rect: bounds.insetBy(dx: 0.5, dy: 0.5))
+        border.lineWidth = 1
+        border.stroke()
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
 // MARK: - Cell
@@ -867,6 +959,13 @@ final class FileCellView: NSTableCellView {
 
     required init?(coder: NSCoder) { fatalError() }
 
+    /// The icon and the name as drawn (not the blank rest of the column): where a press grabs the file.
+    var contentFrame: NSRect? {
+        guard let icon else { return nil }
+        let textWidth = min(label.attributedStringValue.size().width + 4, label.frame.width)
+        return icon.frame.union(NSRect(x: label.frame.minX, y: label.frame.minY, width: textWidth, height: label.frame.height))
+    }
+
     /// `folderSize` comes from a space scan (folders have no size of their own on disk).
     func configure(item: FileItem, column: FileListView.Column, mark: CompareStatus? = nil, insight: CellInsight? = nil,
                    folderSize: Int64? = nil) {
@@ -898,7 +997,7 @@ final class FileCellView: NSTableCellView {
         case .size:
             if item.isNavigable {
                 label.stringValue = folderSize.map(Format.bytes) ?? "--"
-                toolTip = folderSize == nil ? nil : "文件夹大小（来自空间视图的扫描）"
+                toolTip = folderSize == nil ? nil : L("文件夹大小（来自空间视图的扫描）")
             } else {
                 label.stringValue = Format.bytes(item.size)
                 toolTip = nil
@@ -913,7 +1012,7 @@ final class FileCellView: NSTableCellView {
         case .ext:
             label.stringValue = item.isNavigable ? "" : item.fileExtension
         case .tags:
-            label.stringValue = item.tagNames.joined(separator: "、")
+            label.stringValue = item.tagNames.joined(separator: L("、"))
         }
         alphaValue = item.isHidden ? 0.55 : 1
     }

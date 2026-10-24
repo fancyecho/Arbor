@@ -6,9 +6,17 @@ enum TransferKind: Sendable {
 
     var verb: String {
         switch self {
-        case .copy: "拷贝"
-        case .move: "移动"
-        case .duplicate: "复制"
+        case .copy: L("拷贝")
+        case .move: L("移动")
+        case .duplicate: L("复制")
+        }
+    }
+
+    func failure(_ name: String, _ reason: String) -> String {
+        switch self {
+        case .copy: L("无法拷贝“\(name)”：\(reason)")
+        case .move: L("无法移动“\(name)”：\(reason)")
+        case .duplicate: L("无法复制“\(name)”：\(reason)")
         }
     }
 }
@@ -126,7 +134,7 @@ final class TransferEngine: @unchecked Sendable {
                 let plainFolder = values?.isDirectory == true && values?.isPackage != true
                 let ext = source.pathExtension
                 let base = source.deletingPathExtension().lastPathComponent
-                name = ext.isEmpty || plainFolder ? "\(source.lastPathComponent) 副本" : "\(base) 副本.\(ext)"
+                name = ext.isEmpty || plainFolder ? L("\(source.lastPathComponent) 副本") : L("\(base) 副本.\(ext)")
             } else {
                 name = source.lastPathComponent
             }
@@ -256,7 +264,7 @@ final class TransferEngine: @unchecked Sendable {
             try? fm.removeItem(at: target) // never leave a half-copied item behind
             if cancelFlag.isCancelled { throw TransferStop.stopped }
             throw NSError(domain: NSPOSIXErrorDomain, code: Int(code), userInfo: [
-                NSLocalizedDescriptionKey: "无法\(kind.verb)“\(source.lastPathComponent)”：\(String(cString: strerror(code)))",
+                NSLocalizedDescriptionKey: kind.failure(source.lastPathComponent, String(cString: strerror(code))),
             ])
         }
         progress.completedBytes = baseline + expected

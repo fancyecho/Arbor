@@ -26,9 +26,9 @@ enum ImageToolError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .unreadable(let name): "无法读取图片“\(name)”。"
-        case .unwritable(let name): "无法写入“\(name)”。"
-        case .noSubject(let name): "在“\(name)”中没有识别到可以抠出的主体。"
+        case .unreadable(let name): L("无法读取图片“\(name)”。")
+        case .unwritable(let name): L("无法写入“\(name)”。")
+        case .noSubject(let name): L("在“\(name)”中没有识别到可以抠出的主体。")
         }
     }
 }
@@ -122,7 +122,7 @@ enum ImageTools {
             }
             document.insert(page, at: document.pageCount)
         }
-        let name = urls.count == 1 ? urls[0].deletingPathExtension().lastPathComponent + ".pdf" : "合并的图片.pdf"
+        let name = urls.count == 1 ? urls[0].deletingPathExtension().lastPathComponent + ".pdf" : L("合并的图片.pdf")
         let target = FileOperations.uniqueURL(for: name, in: directory)
         guard document.write(to: target) else { throw ImageToolError.unwritable(target.lastPathComponent) }
         return target
@@ -144,7 +144,7 @@ enum ImageTools {
         }
         let buffer = try result.generateMaskedImage(ofInstances: result.allInstances, from: handler, croppedToInstancesExtent: false)
         let ciImage = CIImage(cvPixelBuffer: buffer)
-        let target = FileOperations.uniqueURL(for: url.deletingPathExtension().lastPathComponent + " 去背景.png",
+        let target = FileOperations.uniqueURL(for: url.deletingPathExtension().lastPathComponent + L(" 去背景.png"),
                                               in: url.deletingLastPathComponent())
         try CIContext().writePNGRepresentation(of: ciImage, to: target, format: .RGBA8,
                                                colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!)

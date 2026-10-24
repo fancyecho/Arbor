@@ -67,6 +67,16 @@ enum AppActions {
         }
     }
 
+    /// Quits and opens Arbor again once this process has gone (e.g. to switch language).
+    static func relaunch() {
+        let script = Process()
+        script.executableURL = URL(fileURLWithPath: "/bin/sh")
+        script.arguments = ["-c", "while kill -0 \(ProcessInfo.processInfo.processIdentifier) 2>/dev/null; do sleep 0.2; done; open \"$0\"",
+                            Bundle.main.bundlePath]
+        try? script.run()
+        quit()
+    }
+
     /// Global hotkey: show Arbor, or hide it if it's already in front.
     static func toggle() {
         if NSApp.isActive, hasBrowserWindow {
@@ -142,14 +152,14 @@ struct HotKeyRecorder: View {
 
     var body: some View {
         HStack {
-            Button(recording ? "请按下快捷键…" : (spec?.display ?? "未设置")) {
+            Button(recording ? L("请按下快捷键…") : (spec?.display ?? L("未设置"))) {
                 recording ? stop() : start()
             }
             .frame(minWidth: 140)
             if spec != nil, !recording {
                 Button { spec = nil } label: { Image(systemName: "xmark.circle.fill") }
                     .buttonStyle(.borderless)
-                    .help("清除")
+                    .help(L("清除"))
             }
         }
         .onDisappear(perform: stop)
@@ -200,20 +210,20 @@ struct MenuBarContent: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        Button("打开 Arbor") { AppActions.show() }
+        Button(L("打开 Arbor")) { AppActions.show() }
         Divider()
-        Menu("个人收藏") {
+        Menu(L("个人收藏")) {
             ForEach(SidebarStore.shared.favorites) { favorite in
                 Button(favorite.name) { AppActions.show(favorite.url) }
             }
         }
-        Menu("常去的文件夹") {
+        Menu(L("常去的文件夹")) {
             ForEach(Frecency.shared.ranked().prefix(10), id: \.path) { entry in
                 Button(Places.displayName(for: URL(fileURLWithPath: entry.path))) { AppActions.show(URL(fileURLWithPath: entry.path)) }
             }
         }
         if !WorkspaceLibrary.shared.saved.isEmpty {
-            Menu("工作区") {
+            Menu(L("工作区")) {
                 ForEach(WorkspaceLibrary.shared.saved) { saved in
                     Button(saved.name) {
                         AppActions.show()
@@ -223,14 +233,14 @@ struct MenuBarContent: View {
             }
         }
         Divider()
-        Button(StashShelf.shared.isVisible ? "隐藏暂存架" : "显示暂存架") { StashShelf.shared.toggle() }
-        Button("连接服务器…") {
+        Button(StashShelf.shared.isVisible ? L("隐藏暂存架") : L("显示暂存架")) { StashShelf.shared.toggle() }
+        Button(L("连接服务器…")) {
             AppActions.show()
             WorkspaceRegistry.shared.current?.showConnectServer = true
         }
         Divider()
-        SettingsLink { Text("设置…") }
-        Button("退出 Arbor") { AppActions.quit() }
+        SettingsLink { Text(L("设置…")) }
+        Button(L("退出 Arbor")) { AppActions.quit() }
             .onAppear { AppActions.openWindow = openWindow }
     }
 }

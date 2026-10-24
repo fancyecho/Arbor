@@ -10,7 +10,7 @@ struct ExternalApp: Hashable, Identifiable {
     var isInstalled: Bool { url != nil }
 
     static let terminals: [ExternalApp] = [
-        .init(name: "终端", bundleID: "com.apple.Terminal"),
+        .init(name: L("终端"), bundleID: "com.apple.Terminal"),
         .init(name: "iTerm", bundleID: "com.googlecode.iterm2"),
         .init(name: "Ghostty", bundleID: "com.mitchellh.ghostty"),
         .init(name: "Warp", bundleID: "dev.warp.Warp-Stable"),
@@ -27,7 +27,7 @@ struct ExternalApp: Hashable, Identifiable {
         .init(name: "Nova", bundleID: "com.panic.Nova"),
         .init(name: "BBEdit", bundleID: "com.barebones.bbedit"),
         .init(name: "Xcode", bundleID: "com.apple.dt.Xcode"),
-        .init(name: "文本编辑", bundleID: "com.apple.TextEdit"),
+        .init(name: L("文本编辑"), bundleID: "com.apple.TextEdit"),
     ]
 
     static var installedTerminals: [ExternalApp] { terminals.filter(\.isInstalled) }
@@ -41,9 +41,9 @@ struct CustomCommand: Codable, Hashable, Identifiable {
         var id: Self { self }
         var title: String {
             switch self {
-            case .background: "后台运行"
-            case .output: "运行并显示输出"
-            case .terminal: "在终端中运行"
+            case .background: L("后台运行")
+            case .output: L("运行并显示输出")
+            case .terminal: L("在终端中运行")
             }
         }
     }
@@ -54,10 +54,10 @@ struct CustomCommand: Codable, Hashable, Identifiable {
     var mode: Mode = .output
 
     static let examples: [CustomCommand] = [
-        CustomCommand(name: "压缩为 zip", script: "zip -r -q \"归档 $(date +%H%M%S).zip\" $NAMES", mode: .background),
-        CustomCommand(name: "统计行数", script: "wc -l $FILES", mode: .output),
-        CustomCommand(name: "计算 SHA-256", script: "shasum -a 256 $FILES", mode: .output),
-        CustomCommand(name: "Git 状态", script: "git status", mode: .terminal),
+        CustomCommand(name: L("压缩为 zip"), script: L("zip -r -q \"归档 $(date +%H%M%S).zip\" $NAMES"), mode: .background),
+        CustomCommand(name: L("统计行数"), script: "wc -l $FILES", mode: .output),
+        CustomCommand(name: L("计算 SHA-256"), script: "shasum -a 256 $FILES", mode: .output),
+        CustomCommand(name: L("Git 状态"), script: "git status", mode: .terminal),
     ]
 }
 
@@ -69,11 +69,7 @@ struct CommandOutput: Identifiable {
 }
 
 enum CommandRunner {
-    static let placeholderHelp = """
-    $FILES 所选项目的完整路径（已加引号，空格分隔）
-    $FILE  第一个所选项目    $NAMES 所选项目的名称
-    $DIR   当前文件夹        命令在当前文件夹中执行
-    """
+    static let placeholderHelp = L("$FILES 所选项目的完整路径（已加引号，空格分隔）\n$FILE  第一个所选项目    $NAMES 所选项目的名称\n$DIR   当前文件夹        命令在当前文件夹中执行")
 
     /// Replaces placeholders with shell-quoted values. Longer names first so $FILES isn't read as $FILE + S.
     static func expand(_ script: String, files: [URL], directory: URL) -> String {
@@ -118,7 +114,7 @@ enum CommandRunner {
                 process.waitUntilExit()
                 text = String(decoding: data, as: UTF8.self)
                 ok = process.terminationStatus == 0
-                if !ok { text += "\n（退出码 \(process.terminationStatus)）" }
+                if !ok { text += L("\n（退出码 \(process.terminationStatus)）") }
             } catch {
                 text = error.localizedDescription
             }

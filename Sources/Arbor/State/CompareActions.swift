@@ -17,7 +17,7 @@ extension WorkspaceState {
             tab.selection = Set(tab.visibleItems.filter { marks[$0.name].map(mode.includes) ?? false }.map(\.url))
         }
         let differing = result.left.values.filter { $0 != .same }.count + result.right.values.filter { $0 == .onlyHere }.count
-        if differing == 0 { alertMessage = "两个文件夹的内容相同。" }
+        if differing == 0 { alertMessage = L("两个文件夹的内容相同。") }
     }
 
     func clearComparison() {

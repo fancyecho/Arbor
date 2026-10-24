@@ -25,7 +25,7 @@ enum DefaultFolderApp {
 
     /// A readable name for the app that shows files for other apps.
     static var currentName: String {
-        guard let id = fileViewer, id.lowercased() != finderID else { return "访达" }
+        guard let id = fileViewer, id.lowercased() != finderID else { return L("访达") }
         if id.lowercased() == arborID.lowercased() { return "Arbor" }
         if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) {
             return FileManager.default.displayName(atPath: url.path).replacingOccurrences(of: ".app", with: "")
@@ -38,6 +38,6 @@ enum DefaultFolderApp {
         CFPreferencesSetValue(fileViewerKey, arbor ? arborID as CFString : nil, kCFPreferencesAnyApplication,
                               kCFPreferencesCurrentUser, kCFPreferencesAnyHost)
         let saved = CFPreferencesSynchronize(kCFPreferencesAnyApplication, kCFPreferencesCurrentUser, kCFPreferencesAnyHost)
-        return saved && isArbor == arbor ? nil : "没能写入系统偏好设置。"
+        return saved && isArbor == arbor ? nil : L("没能写入系统偏好设置。")
     }
 }

@@ -14,7 +14,7 @@ struct SyncSheet: View {
         let there = workspace.otherPane?.activeTab.url ?? here
 
         VStack(alignment: .leading, spacing: 14) {
-            Text("同步文件夹").font(.headline)
+            Text(L("同步文件夹")).font(.headline)
 
             HStack(spacing: 10) {
                 folderLabel(here)
@@ -34,12 +34,12 @@ struct SyncSheet: View {
                 .foregroundStyle(.secondary)
 
             HStack(spacing: 18) {
-                Toggle("包含子文件夹", isOn: $options.recursive)
-                Toggle("删除目标中多余的项目", isOn: $options.deleteExtras)
+                Toggle(L("包含子文件夹"), isOn: $options.recursive)
+                Toggle(L("删除目标中多余的项目"), isOn: $options.deleteExtras)
                     .disabled(options.direction == .both)
-                    .help("让目标与源完全一致（多余项目移到废纸篓，可撤销）")
-                Toggle("比较文件内容", isOn: $options.compareContents)
-                    .help("大小和日期都相同时再计算 SHA-256，较慢")
+                    .help(L("让目标与源完全一致（多余项目移到废纸篓，可撤销）"))
+                Toggle(L("比较文件内容"), isOn: $options.compareContents)
+                    .help(L("大小和日期都相同时再计算 SHA-256，较慢"))
             }
 
             List(actions) { action in
@@ -56,17 +56,17 @@ struct SyncSheet: View {
             .listStyle(.bordered(alternatesRowBackgrounds: true))
             .overlay {
                 if planning {
-                    ProgressView("正在比较…").controlSize(.small)
+                    ProgressView(L("正在比较…")).controlSize(.small)
                 } else if actions.isEmpty {
-                    Text("两边已经一致，无需同步").foregroundStyle(.secondary)
+                    Text(L("两边已经一致，无需同步")).foregroundStyle(.secondary)
                 }
             }
 
             HStack {
                 Text(summary).foregroundStyle(.secondary).font(.callout)
                 Spacer()
-                Button("取消", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
-                Button("同步") {
+                Button(L("取消"), role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
+                Button(L("同步")) {
                     workspace.runSync(actions)
                     dismiss()
                 }
@@ -102,9 +102,9 @@ struct SyncSheet: View {
 
     private var directionHelp: String {
         switch options.direction {
-        case .toOther: "把左侧新增和较新的文件拷贝到右侧；右侧较新的文件不会被覆盖。"
-        case .fromOther: "把右侧新增和较新的文件拷贝到左侧；左侧较新的文件不会被覆盖。"
-        case .both: "双向：各自把对方没有的、以及更新版本的文件拷贝过去，不删除任何内容。"
+        case .toOther: L("把左侧新增和较新的文件拷贝到右侧；右侧较新的文件不会被覆盖。")
+        case .fromOther: L("把右侧新增和较新的文件拷贝到左侧；左侧较新的文件不会被覆盖。")
+        case .both: L("双向：各自把对方没有的、以及更新版本的文件拷贝过去，不删除任何内容。")
         }
     }
 
@@ -112,7 +112,7 @@ struct SyncSheet: View {
         let add = actions.filter { $0.kind == .add }.count
         let update = actions.filter { $0.kind == .update }.count
         let delete = actions.filter { $0.kind == .delete }.count
-        return "新增 \(add) · 更新 \(update) · 删除 \(delete)"
+        return L("新增 \(add) · 更新 \(update) · 删除 \(delete)")
     }
 
     private func symbol(_ kind: SyncAction.Kind) -> String {
@@ -133,6 +133,6 @@ struct SyncSheet: View {
 
     private func arrow(_ action: SyncAction) -> String {
         let to = Places.displayName(for: action.kind == .delete ? action.item.deletingLastPathComponent() : action.destination)
-        return action.kind == .delete ? "从“\(to)”删除" : "→ \(to)"
+        return action.kind == .delete ? L("从“\(to)”删除") : "→ \(to)"
     }
 }

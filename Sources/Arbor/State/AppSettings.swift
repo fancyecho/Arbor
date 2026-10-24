@@ -37,9 +37,9 @@ final class AppSettings {
         var id: Self { self }
         var title: String {
             switch self {
-            case .system: "跟随系统"
-            case .light: "浅色"
-            case .dark: "深色"
+            case .system: L("跟随系统")
+            case .light: L("浅色")
+            case .dark: L("深色")
             }
         }
         var nsAppearance: NSAppearance? {
@@ -176,6 +176,6 @@ final class AppSettings {
     }
 
     var editorName: String {
-        ExternalApp.editors.first { $0.bundleID == editorBundleID }?.name ?? "编辑器"
+        ExternalApp.editors.first { $0.bundleID == editorBundleID }?.name ?? L("编辑器")
     }
 }

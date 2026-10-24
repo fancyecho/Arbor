@@ -88,11 +88,11 @@ final class StashShelf {
         let sources = items
         guard !sources.isEmpty else { return }
         let alert = NSAlert()
-        let size = totalSize.map { "（\(Format.bytes($0))）" } ?? ""
-        alert.messageText = "把暂存架上的 \(sources.count) 个项目\(size)移到废纸篓？"
-        alert.informativeText = "可以用 ⌘Z 撤销。清倒废纸篓后空间才会真正释放。"
-        alert.addButton(withTitle: "移到废纸篓")
-        alert.addButton(withTitle: "取消")
+        let size = totalSize.map { L("（\(Format.bytes($0))）") } ?? ""
+        alert.messageText = L("把暂存架上的 \(sources.count) 个项目\(size)移到废纸篓？")
+        alert.informativeText = L("可以用 ⌘Z 撤销。清倒废纸篓后空间才会真正释放。")
+        alert.addButton(withTitle: L("移到废纸篓"))
+        alert.addButton(withTitle: L("取消"))
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         FileOperationQueue.shared.trash(sources) { [weak self] error in
             workspace?.report(error)
@@ -115,7 +115,7 @@ final class StashShelf {
                                 styleMask: [.titled, .closable, .resizable, .fullSizeContentView, .nonactivatingPanel],
                                 backing: .buffered, defer: false)
             // Glass all the way to the top, like the main window: no title bar strip, just the close button.
-            panel.title = "暂存架"
+            panel.title = L("暂存架")
             panel.titleVisibility = .hidden
             panel.titlebarAppearsTransparent = true
             panel.isMovableByWindowBackground = true
@@ -196,7 +196,7 @@ struct StashShelfView: View {
     private var header: some View {
         HStack(spacing: 6) {
             Image(systemName: "tray.full").foregroundStyle(tint)
-            Text("暂存架").font(.system(size: 13, weight: .semibold))
+            Text(L("暂存架")).font(.system(size: 13, weight: .semibold))
             if !shelf.items.isEmpty {
                 Text("\(shelf.items.count)")
                     .font(.system(size: 10.5, weight: .semibold))
@@ -218,8 +218,8 @@ struct StashShelfView: View {
                 Circle().strokeBorder(tint.opacity(0.25), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4])).frame(width: 76, height: 76)
                 Image(systemName: "tray.and.arrow.down").font(.system(size: 28, weight: .medium)).foregroundStyle(tint)
             }
-            Text("把文件拖到这里").font(.system(size: 13, weight: .semibold))
-            Text("从不同文件夹收集文件，\n再一次性移动、拷贝或移到废纸篓。")
+            Text(L("把文件拖到这里")).font(.system(size: 13, weight: .semibold))
+            Text(L("从不同文件夹收集文件，\n再一次性移动、拷贝或移到废纸篓。"))
                 .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -229,9 +229,9 @@ struct StashShelfView: View {
         VStack(spacing: 8) {
             if !shelf.items.isEmpty {
                 HStack {
-                    Text("\(shelf.items.count) 个项目")
+                    Text(L("\(shelf.items.count) 个项目"))
                     Spacer()
-                    Text(shelf.totalSize.map { "共 \(Format.bytes($0))" } ?? "正在计算大小…").monospacedDigit()
+                    Text(shelf.totalSize.map { L("共 \(Format.bytes($0))") } ?? L("正在计算大小…")).monospacedDigit()
                 }
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
@@ -239,20 +239,20 @@ struct StashShelfView: View {
             HStack(spacing: 6) {
                 let target = WorkspaceRegistry.shared.current
                 let here = target?.activeTab.url ?? URL(fileURLWithPath: NSHomeDirectory())
-                Button("移动到此处") { shelf.transferAll(to: here, move: true, workspace: target) }
+                Button(L("移动到此处")) { shelf.transferAll(to: here, move: true, workspace: target) }
                     .buttonStyle(.glassProminentCompact)
-                Button("拷贝到此处") { shelf.transferAll(to: here, move: false, workspace: target) }
+                Button(L("拷贝到此处")) { shelf.transferAll(to: here, move: false, workspace: target) }
                     .buttonStyle(.glassCompact)
                 Spacer(minLength: 4)
                 Button { shelf.trashAll(workspace: target) } label: { Image(systemName: "trash") }
                     .buttonStyle(.glassCompact)
-                    .help("全部移到废纸篓（可撤销）")
+                    .help(L("全部移到废纸篓（可撤销）"))
                 Button { shelf.clear() } label: { Image(systemName: "xmark.bin") }
                     .buttonStyle(.glassCompact)
-                    .help("清空暂存架（不会删除文件）")
+                    .help(L("清空暂存架（不会删除文件）"))
             }
             .disabled(shelf.items.isEmpty)
-            .help("“此处”指最近使用的 Arbor 窗口中当前的文件夹")
+            .help(L("“此处”指最近使用的 Arbor 窗口中当前的文件夹"))
         }
         .padding(.horizontal, 12)
         .padding(.top, 10)
@@ -285,7 +285,7 @@ private struct ShelfRow: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
-                .help("移出暂存架")
+                .help(L("移出暂存架"))
             } else if let size = StashShelf.shared.sizes[url.path] {
                 Text(Format.bytes(size)).font(.system(size: 11)).monospacedDigit().foregroundStyle(.secondary)
             }
@@ -304,10 +304,10 @@ private struct ShelfRow: View {
         .onDrag { NSItemProvider(object: url as NSURL) }
         .onTapGesture(count: 2) { NSWorkspace.shared.open(url) }
         .contextMenu {
-            Button("在 Arbor 中显示") { WorkspaceRegistry.shared.current?.go(to: url) }
-            Button("打开") { NSWorkspace.shared.open(url) }
+            Button(L("在 Arbor 中显示")) { WorkspaceRegistry.shared.current?.go(to: url) }
+            Button(L("打开")) { NSWorkspace.shared.open(url) }
             Divider()
-            Button("移出暂存架") { StashShelf.shared.remove(url) }
+            Button(L("移出暂存架")) { StashShelf.shared.remove(url) }
         }
     }
 }

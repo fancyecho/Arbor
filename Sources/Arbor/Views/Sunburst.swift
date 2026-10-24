@@ -8,7 +8,7 @@ import SwiftUI
 enum SpaceColoring: String, CaseIterable, Identifiable {
     case folders, types
     var id: Self { self }
-    var title: String { self == .folders ? "文件夹" : "类型" }
+    var title: String { self == .folders ? L("文件夹") : L("类型") }
 }
 
 struct SunSegment: Identifiable, Equatable {

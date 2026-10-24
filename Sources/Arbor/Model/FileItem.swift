@@ -68,14 +68,14 @@ enum SortKey: String, CaseIterable, Codable {
 
     var title: String {
         switch self {
-        case .name: "名称"
-        case .modified: "修改日期"
-        case .size: "大小"
-        case .kind: "种类"
-        case .created: "创建日期"
-        case .location: "位置"
-        case .ext: "扩展名"
-        case .tags: "标签"
+        case .name: L("名称")
+        case .modified: L("修改日期")
+        case .size: L("大小")
+        case .kind: L("种类")
+        case .created: L("创建日期")
+        case .location: L("位置")
+        case .ext: L("扩展名")
+        case .tags: L("标签")
         }
     }
 }
@@ -152,8 +152,8 @@ enum Format {
     static func date(_ date: Date?) -> String {
         guard let date else { return "--" }
         let cal = Calendar.current
-        if cal.isDateInToday(date) { return "今天 " + clockFormatter.string(from: date) }
-        if cal.isDateInYesterday(date) { return "昨天 " + clockFormatter.string(from: date) }
+        if cal.isDateInToday(date) { return L("今天 ") + clockFormatter.string(from: date) }
+        if cal.isDateInYesterday(date) { return L("昨天 ") + clockFormatter.string(from: date) }
         return dateFormatter.string(from: date)
     }
 }

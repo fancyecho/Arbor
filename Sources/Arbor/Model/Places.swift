@@ -19,24 +19,24 @@ enum Places {
     }
 
     static let favorites: [Place] = [
-        Place(name: "主目录", url: home, symbol: "house", shortcut: "h"),
-        Place(name: "桌面", url: dir(.desktopDirectory), symbol: "menubar.dock.rectangle", shortcut: "d"),
-        Place(name: "文稿", url: dir(.documentDirectory), symbol: "doc", shortcut: "o"),
-        Place(name: "下载", url: dir(.downloadsDirectory), symbol: "arrow.down.circle", shortcut: "l"),
-        Place(name: "应用程序", url: URL(fileURLWithPath: "/Applications"), symbol: "square.grid.3x3", shortcut: "a"),
-        Place(name: "图片", url: dir(.picturesDirectory), symbol: "photo", shortcut: nil),
-        Place(name: "影片", url: dir(.moviesDirectory), symbol: "film", shortcut: nil),
-        Place(name: "音乐", url: dir(.musicDirectory), symbol: "music.note", shortcut: nil),
+        Place(name: L("主目录"), url: home, symbol: "house", shortcut: "h"),
+        Place(name: L("桌面"), url: dir(.desktopDirectory), symbol: "menubar.dock.rectangle", shortcut: "d"),
+        Place(name: L("文稿"), url: dir(.documentDirectory), symbol: "doc", shortcut: "o"),
+        Place(name: L("下载"), url: dir(.downloadsDirectory), symbol: "arrow.down.circle", shortcut: "l"),
+        Place(name: L("应用程序"), url: URL(fileURLWithPath: "/Applications"), symbol: "square.grid.3x3", shortcut: "a"),
+        Place(name: L("图片##places"), url: dir(.picturesDirectory), symbol: "photo", shortcut: nil),
+        Place(name: L("影片"), url: dir(.moviesDirectory), symbol: "film", shortcut: nil),
+        Place(name: L("音乐"), url: dir(.musicDirectory), symbol: "music.note", shortcut: nil),
     ]
 
     static var iCloudDrive: Place? {
         let url = home.appendingPathComponent("Library/Mobile Documents/com~apple~CloudDocs")
         guard FileManager.default.fileExists(atPath: url.path) else { return nil }
-        return Place(name: "iCloud 云盘", url: url, symbol: "icloud")
+        return Place(name: L("iCloud 云盘"), url: url, symbol: "icloud")
     }
 
     static var trash: Place {
-        Place(name: "废纸篓", url: home.appendingPathComponent(".Trash"), symbol: "trash")
+        Place(name: L("废纸篓"), url: home.appendingPathComponent(".Trash"), symbol: "trash")
     }
 
     /// Known folders use their localized name ("下载"); anything else its display name.
@@ -150,8 +150,8 @@ final class VolumeList {
 
     private static func reportEjectFailure(_ error: Error, name: String) {
         let alert = NSAlert()
-        alert.messageText = "无法推出“\(name)”"
-        alert.informativeText = "有其他应用正在使用它。关闭使用其中文件的应用后再试一次。\n\n(\(error.localizedDescription))"
+        alert.messageText = L("无法推出“\(name)”")
+        alert.informativeText = L("有其他应用正在使用它。关闭使用其中文件的应用后再试一次。\n\n(\(error.localizedDescription))")
         alert.runModal()
     }
 }
