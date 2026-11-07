@@ -1,4 +1,4 @@
-<p align="center"><img src="Resources/AppIcon-preview.png" width="128" alt="Arbor 图标：压印着橄榄枝的玻璃文件夹"></p>
+<p align="center"><img src="Resources/AppIcon-preview.png" width="128" alt="Arbor 图标：露出三张彩色纸的靛蓝文件夹"></p>
 
 # Arbor
 

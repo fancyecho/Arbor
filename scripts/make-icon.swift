@@ -3,96 +3,68 @@
 // Usage: swift scripts/make-icon.swift <project root> [folder for a strip of the small sizes]
 // Needs Xcode (for Icon Composer's ictool). build-app.sh compiles the document with actool.
 //
-// The idea: a glass folder with an olive sprig pressed into its front, on the dusk indigo of Arbor's
-// default workspace. One object, the "arbor" as an emblem on it. Flat, frontal shapes; the system's
-// Liquid Glass adds the depth, highlights and shadows, and the dark, clear and tinted looks.
+// The idea: one bold indigo folder on a light background, with three sheets in Arbor's workspace colors
+// (coral, amber, teal) peeking over its front. Flat, frontal shapes; the system's Liquid Glass adds the
+// depth, highlights and shadows, and the dark, clear and tinted looks.
 import Foundation
 
 let root = URL(fileURLWithPath: CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : ".")
 let document = root.appendingPathComponent("Resources/AppIcon.icon")
 
-func n(_ value: Double) -> String { String(format: "%.1f", value) }
+// MARK: Shapes (1024 canvas, y down). MenuBarIcon.swift draws the same folder for the menu bar.
 
-// MARK: Folder (1024 canvas, y down)
-
-let folderBack = """
-    <path d="M 196 342 Q 196 300 238 300 L 404 300 Q 434 300 452 322 L 478 352 L 786 352 \
-    Q 828 352 828 394 L 828 778 Q 828 820 786 820 L 238 820 Q 196 820 196 778 Z" fill="url(#g)"/>
+// The folder is 724 wide, about 1.25:1, its tab a third of the width, centered a touch low.
+let left = 150, right = 874
+let back = """
+    <path d="M \(left) 286 Q \(left) 210 226 210 L 366 210 Q 402 210 424 238 L 444 262 Q 456 276 476 276 \
+    L \(right - 70) 276 Q \(right) 276 \(right) 346 L \(right) 742 Q \(right) 812 \(right - 70) 812 \
+    L 220 812 Q \(left) 812 \(left) 742 Z" fill="url(#g)"/>
     """
-let folderFront = #"<rect x="176" y="430" width="672" height="410" rx="54" fill="url(#g)"/>"#
+let front = "<rect x=\"\(left)\" y=\"334\" width=\"\(right - left)\" height=\"484\" rx=\"76\" fill=\"url(#g)\"/>"
 
-// MARK: Sprig, centered on the folder front. MenuBarIcon.swift draws the same sprig for the menu bar.
+/// A sheet tucked into the folder; only its top shows above the front.
+func sheet(from x0: Double, to x1: Double, top: Double, angle: Double, fill: String) -> String {
+    "<g transform=\"rotate(\(angle) \((x0 + x1) / 2) 600)\"><rect x=\"\(x0)\" y=\"\(top)\" width=\"\(x1 - x0)\" "
+        + "height=\"400\" rx=\"34\" fill=\"url(#\(fill))\"/></g>"
+}
+let sheets = sheet(from: 222, to: 560, top: 266, angle: -5, fill: "coral")
+    + sheet(from: 400, to: 700, top: 250, angle: 1, fill: "amber")
+    + sheet(from: 560, to: 812, top: 272, angle: 6, fill: "teal")
 
-typealias Point = (x: Double, y: Double)
-let stem: [Point] = [(408, 763), (456, 685), (518, 601), (616, 523)]
-
-/// A point on the stem and the direction it grows there (0° is straight up, positive leans right).
-func onStem(_ t: Double) -> (Point, Double) {
-    let (p0, p1, p2, p3) = (stem[0], stem[1], stem[2], stem[3])
-    let u = 1 - t
-    let x = u * u * u * p0.x + 3 * u * u * t * p1.x + 3 * u * t * t * p2.x + t * t * t * p3.x
-    let y = u * u * u * p0.y + 3 * u * u * t * p1.y + 3 * u * t * t * p2.y + t * t * t * p3.y
-    let dx = 3 * u * u * (p1.x - p0.x) + 6 * u * t * (p2.x - p1.x) + 3 * t * t * (p3.x - p2.x)
-    let dy = 3 * u * u * (p1.y - p0.y) + 6 * u * t * (p2.y - p1.y) + 3 * t * t * (p3.y - p2.y)
-    return ((x, y), atan2(dx, -dy) * 180 / .pi)
+func gradient(_ id: String, _ top: String, _ bottom: String) -> String {
+    "<linearGradient id=\"\(id)\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\">"
+        + "<stop offset=\"0\" stop-color=\"\(top)\"/><stop offset=\"1\" stop-color=\"\(bottom)\"/></linearGradient>"
 }
 
-/// An olive leaf from `base` along `heading`: fullest near the stem, tapering to a soft tip.
-func leaf(at base: Point, heading: Double, length l: Double, width w: Double) -> String {
-    let d = "M 0,0 C \(n(w)),\(n(-l * 0.18)) \(n(w * 0.85)),\(n(-l * 0.82)) 0,\(n(-l)) "
-        + "C \(n(-w * 0.85)),\(n(-l * 0.82)) \(n(-w)),\(n(-l * 0.18)) 0,0 Z"
-    return "<g transform=\"translate(\(n(base.x)) \(n(base.y))) rotate(\(n(heading)))\">"
-        + "<path d=\"\(d)\" fill=\"url(#g)\" stroke=\"url(#g)\" stroke-width=\"14\" stroke-linejoin=\"round\"/></g>"
-}
-
-var sprig = "<path d=\"M \(n(stem[0].x)),\(n(stem[0].y)) C \(n(stem[1].x)),\(n(stem[1].y)) "
-    + "\(n(stem[2].x)),\(n(stem[2].y)) \(n(stem[3].x)),\(n(stem[3].y))\" fill=\"none\" stroke=\"url(#g)\" "
-    + "stroke-width=\"16\" stroke-linecap=\"round\"/>"
-// Leaves alternate sides at the same angle, each a little smaller than the one below; one more at the tip.
-for (index, t) in [0.16, 0.34, 0.52, 0.70].enumerated() {
-    let (point, heading) = onStem(t)
-    let scale = 1 - Double(index) * 0.08
-    sprig += leaf(at: point, heading: heading + (index % 2 == 0 ? -46 : 46), length: 104 * scale, width: 38 * scale)
-}
-let (tip, tipHeading) = onStem(1)
-sprig += leaf(at: tip, heading: tipHeading + 4, length: 82, width: 30)
-
-func svg(_ body: String, top light: String, bottom deep: String) -> String {
-    """
-    <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">\
-    <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">\
-    <stop offset="0" stop-color="\(light)"/><stop offset="1" stop-color="\(deep)"/></linearGradient></defs>\
-    \(body)</svg>
-    """
+func svg(_ body: String, _ defs: String) -> String {
+    "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1024\" height=\"1024\" viewBox=\"0 0 1024 1024\">"
+        + "<defs>\(defs)</defs>\(body)</svg>"
 }
 
 let assets = [
-    "back.svg": svg(folderBack, top: "#B9C0FF", bottom: "#8E97F0"),
-    "front.svg": svg(folderFront, top: "#FFFFFF", bottom: "#E4E8FF"),
-    "sprig.svg": svg(sprig, top: "#7279FF", bottom: "#3A3BC0"),
+    "back.svg": svg(back, gradient("g", "#5A63F2", "#3E40C9")),
+    "sheets.svg": svg(sheets, gradient("coral", "#FF9A7A", "#F2734F") + gradient("amber", "#FFD36B", "#F5B23A")
+                          + gradient("teal", "#6FE0C8", "#2FB79E")),
+    "front.svg": svg(front, gradient("g", "#939BFF", "#5A61F0")),
 ]
 
 // MARK: Document
 
-func group(_ file: String, translucency: Double, shadow: Double, darkFill: String? = nil) -> [String: Any] {
-    var layer: [String: Any] = ["glass": true, "image-name": file, "name": String(file.dropLast(4))]
-    if let darkFill {
-        layer["fill-specializations"] = [["appearance": "dark", "value": ["solid": darkFill]]]
-    }
-    return ["layers": [layer], "lighting": "individual", "specular": true,
-            "shadow": ["kind": "layer-color", "opacity": shadow],
-            "translucency": ["enabled": translucency > 0, "value": translucency]]
+func group(_ file: String, translucency: Double, shadow: Double) -> [String: Any] {
+    ["layers": [["glass": true, "image-name": file, "name": String(file.dropLast(4))]],
+     "lighting": "individual", "specular": true,
+     "shadow": ["kind": "layer-color", "opacity": shadow],
+     "translucency": ["enabled": translucency > 0, "value": translucency]]
 }
 
 let icon: [String: Any] = [
-    // Dusk indigo: the app's default workspace color, deepened toward the bottom.
-    "fill": ["linear-gradient": ["display-p3:0.290,0.330,0.840,1.000", "display-p3:0.100,0.080,0.330,1.000"]],
-    // Front to back: the sprig pressed into the folder front, the front, the back with its tab.
+    // A light, cool background, so the color stays on the folder.
+    "fill": ["linear-gradient": ["display-p3:0.985,0.988,1.000,1.000", "display-p3:0.900,0.910,0.945,1.000"]],
+    // Front to back: the front (frosted just enough to glow, not to show the sheets through), the sheets, the back.
     "groups": [
-        group("sprig.svg", translucency: 0, shadow: 0.35),
-        // On the dark background the white front would pick up the background's indigo.
-        group("front.svg", translucency: 0.3, shadow: 0.5, darkFill: "display-p3:0.930,0.945,1.000,1.000"),
-        group("back.svg", translucency: 0.4, shadow: 0.5),
+        group("front.svg", translucency: 0.12, shadow: 0.5),
+        group("sheets.svg", translucency: 0, shadow: 0.3),
+        group("back.svg", translucency: 0, shadow: 0.5),
     ],
     "supported-platforms": ["circles": ["watchOS"], "squares": "shared"],
 ]
