@@ -13,6 +13,8 @@ struct FileItem: Identifiable, Hashable {
     let size: Int64?
     let modified: Date?
     let created: Date?
+    /// When the item was put in its folder (Finder's "Date Added").
+    let added: Date?
     let contentType: UTType?
     let localizedKind: String
     let tagNames: [String]
@@ -27,7 +29,7 @@ struct FileItem: Identifiable, Hashable {
     static let resourceKeys: [URLResourceKey] = [
         .nameKey, .isDirectoryKey, .isPackageKey, .isHiddenKey, .isSymbolicLinkKey,
         .fileSizeKey, .totalFileAllocatedSizeKey, .contentModificationDateKey, .creationDateKey,
-        .contentTypeKey, .localizedTypeDescriptionKey, .tagNamesKey,
+        .addedToDirectoryDateKey, .contentTypeKey, .localizedTypeDescriptionKey, .tagNamesKey,
     ]
 
     init(url: URL) {
@@ -47,6 +49,7 @@ struct FileItem: Identifiable, Hashable {
         }
         self.modified = values?.contentModificationDate
         self.created = values?.creationDate
+        self.added = values?.addedToDirectoryDate
         self.contentType = values?.contentType
         self.localizedKind = values?.localizedTypeDescription ?? ""
         self.tagNames = values?.tagNames ?? []
@@ -64,7 +67,7 @@ struct FileItem: Identifiable, Hashable {
 // MARK: - Sorting
 
 enum SortKey: String, CaseIterable, Codable {
-    case name, modified, size, kind, created, location, ext, tags
+    case name, modified, size, kind, created, added, lastOpened, location, ext, tags
 
     var title: String {
         switch self {
@@ -73,6 +76,8 @@ enum SortKey: String, CaseIterable, Codable {
         case .size: L("大小")
         case .kind: L("种类")
         case .created: L("创建日期")
+        case .added: L("添加日期")
+        case .lastOpened: L("上次打开日期")
         case .location: L("位置")
         case .ext: L("扩展名")
         case .tags: L("标签")
@@ -85,17 +90,24 @@ struct SortOrder: Equatable, Codable {
     var ascending = true
     var foldersFirst = true
 
-    /// `folderSize` supplies sizes for folders (from a space scan) when sorting by size.
-    func sorted(_ items: [FileItem], folderSize: ((URL) -> Int64?)? = nil) -> [FileItem] {
+    /// `folderSize` supplies sizes for folders (from a space scan) when sorting by size; `lastOpened`
+    /// supplies Spotlight's last-used dates when sorting by them.
+    func sorted(_ items: [FileItem], folderSize: ((URL) -> Int64?)? = nil,
+                lastOpened: ((URL) -> Date?)? = nil) -> [FileItem] {
         var sizes: [URL: Int64] = [:]
         if key == .size, let folderSize {
             for item in items where item.isNavigable { sizes[item.url] = folderSize(item.url) }
         }
         return items.sorted { a, b in
             if foldersFirst, a.isNavigable != b.isNavigable { return a.isNavigable }
-            let result = key == .size && !sizes.isEmpty
-                ? Self.cmp(sizes[a.url] ?? a.size ?? -1, sizes[b.url] ?? b.size ?? -1)
-                : compare(a, b)
+            let result: ComparisonResult
+            if key == .size, !sizes.isEmpty {
+                result = Self.cmp(sizes[a.url] ?? a.size ?? -1, sizes[b.url] ?? b.size ?? -1)
+            } else if key == .lastOpened {
+                result = Self.cmp(lastOpened?(a.url) ?? .distantPast, lastOpened?(b.url) ?? .distantPast)
+            } else {
+                result = compare(a, b)
+            }
             if result == .orderedSame {
                 return a.name.localizedStandardCompare(b.name) == .orderedAscending
             }
@@ -108,6 +120,8 @@ struct SortOrder: Equatable, Codable {
         case .name: return a.name.localizedStandardCompare(b.name)
         case .modified: return Self.cmp(a.modified ?? .distantPast, b.modified ?? .distantPast)
         case .created: return Self.cmp(a.created ?? .distantPast, b.created ?? .distantPast)
+        case .added: return Self.cmp(a.added ?? .distantPast, b.added ?? .distantPast)
+        case .lastOpened: return .orderedSame // needs Spotlight; see `sorted(_:folderSize:lastOpened:)`
         case .size: return Self.cmp(a.size ?? -1, b.size ?? -1)
         case .kind: return a.localizedKind.localizedStandardCompare(b.localizedKind)
         case .location: return a.url.deletingLastPathComponent().path.localizedStandardCompare(b.url.deletingLastPathComponent().path)
@@ -116,7 +130,7 @@ struct SortOrder: Equatable, Codable {
         }
     }
 
-    private static func cmp<T: Comparable>(_ a: T, _ b: T) -> ComparisonResult {
+    static func cmp<T: Comparable>(_ a: T, _ b: T) -> ComparisonResult {
         a < b ? .orderedAscending : (a > b ? .orderedDescending : .orderedSame)
     }
 }

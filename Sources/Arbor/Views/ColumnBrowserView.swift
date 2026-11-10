@@ -12,6 +12,7 @@ struct ColumnBrowserView: View {
     let isActive: Bool
 
     @FocusState private var focused: Bool
+    @State private var springLoader = SpringLoader()
 
     private var selectedItems: [FileItem] { items.filter { tab.selection.contains($0.url) } }
 
@@ -87,10 +88,23 @@ struct ColumnBrowserView: View {
                 .draggable(item.url)
                 .dropDestination(for: URL.self) { urls, _ in
                     guard item.isNavigable else { return false }
+                    springLoader.cancel()
                     FileOperationQueue.shared.transfer(urls.filter { !$0.isSameFile(as: item.url) }, to: item.url) { _, error in
                         workspace.report(error)
                     }
                     return true
+                } isTargeted: { targeted in
+                    // Holding a drag over a folder opens it in the next column (spring-loading).
+                    guard item.isNavigable else { return }
+                    if targeted {
+                        springLoader.open = { [workspace, pane, tab] folder in
+                            workspace.activate(pane)
+                            tab.navigate(to: folder)
+                        }
+                        springLoader.hover(item.url)
+                    } else {
+                        springLoader.leave(item.url)
+                    }
                 }
             }
         }

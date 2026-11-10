@@ -9,7 +9,7 @@ extension WorkspaceState {
         if let urls { return urls }
         let tab = activeTab
         if tab.viewMode == .space { return tab.selectedItems.map(\.url) }
-        return tab.visibleItems.filter { tab.selection.contains($0.url) }.map(\.url)
+        return tab.visibleRows.filter { tab.selection.contains($0.url) }.map(\.url)
     }
 
     var hasSelection: Bool { !activeTab.selection.isEmpty }
@@ -32,7 +32,7 @@ extension WorkspaceState {
     func openSelection(_ urls: [URL]? = nil) {
         let tab = activeTab
         let selected = targets(urls)
-        let visible = tab.visibleItems
+        let visible = tab.visibleRows
         let items = selected.map { url in visible.first { $0.url == url } ?? FileItem(url: url) }
         // A single folder navigates; multiple items open in their apps, folders in new tabs.
         if items.count == 1, let item = items.first {
@@ -110,7 +110,7 @@ extension WorkspaceState {
         guard !items.isEmpty else { return }
         let tab = activeTab
         // Keep the cursor near where it was: select the item after the deleted block.
-        let visible = tab.visibleItems
+        let visible = tab.visibleRows
         let lastIndex = visible.lastIndex { items.contains($0.url) } ?? 0
         let next = visible[(lastIndex + 1)...].first { !items.contains($0.url) }
             ?? visible[..<min(lastIndex, visible.count)].last { !items.contains($0.url) }
@@ -264,7 +264,7 @@ extension WorkspaceState {
         guard !selected.isEmpty else { return }
         let folders = selected.contains(where: \.isNavigable)
         let extensions = Set(selected.filter { !$0.isNavigable }.map { $0.fileExtension.lowercased() })
-        tab.selection = Set(tab.visibleItems.filter {
+        tab.selection = Set(tab.visibleRows.filter {
             $0.isNavigable ? folders : extensions.contains($0.fileExtension.lowercased())
         }.map(\.url))
     }
@@ -277,12 +277,35 @@ extension WorkspaceState {
 
     func selectAll() {
         let tab = activeTab
-        tab.selection = Set(tab.visibleItems.map(\.url))
+        tab.selection = Set(tab.visibleRows.map(\.url))
     }
 
     func toggleHidden() {
         AppSettings.shared.showHidden.toggle()
     }
+
+    // MARK: Sorting & groups
+
+    /// Sorts by `key`, like Finder's 显示 › 排序方式: names and kinds A→Z, dates and sizes newest/largest first.
+    func setSort(_ key: SortKey) {
+        let tab = activeTab
+        tab.sort.key = key
+        tab.sort.ascending = [.name, .kind, .ext, .tags, .location].contains(key)
+    }
+
+    func setGroupBy(_ groupBy: GroupBy) {
+        activeTab.groupBy = groupBy
+        if groupBy != .none { UserDefaults.standard.set(groupBy.rawValue, forKey: Self.lastGroupByKey) }
+    }
+
+    /// 使用群组 (⌃⌘0): back to the grouping used last, or off.
+    func toggleGroups() {
+        if activeTab.groupBy != .none { return setGroupBy(.none) }
+        let last = UserDefaults.standard.string(forKey: Self.lastGroupByKey).flatMap(GroupBy.init(rawValue:))
+        setGroupBy(last ?? .kind)
+    }
+
+    private static let lastGroupByKey = "lastGroupBy"
 
     /// Shows where the space under `url` (default: the current folder) goes.
     func analyzeSpace(_ url: URL? = nil) {

@@ -5,7 +5,10 @@ struct FileGridView: View {
     let workspace: WorkspaceState
     let pane: PaneState
     let tab: TabState
+    /// Every item in display order (group by group).
     let items: [FileItem]
+    var groups: [FileGroup] = []
+    var showsGroups = false
     let isActive: Bool
 
     @State private var anchor: URL?
@@ -15,6 +18,7 @@ struct FileGridView: View {
     @State private var marqueeBase: Set<URL> = []
     @State private var dragBeganOnItem = false
     @State private var frames = CellFrames()
+    @State private var springLoader = SpringLoader()
     @State private var width: CGFloat = 600
     @FocusState private var focused: Bool
 
@@ -30,37 +34,16 @@ struct FileGridView: View {
             ScrollView {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: Self.cellWidth, maximum: Self.cellWidth), spacing: Self.spacing)],
                           alignment: .leading, spacing: 10) {
-                    ForEach(items) { item in
-                        GridCell(
-                            item: item,
-                            isSelected: tab.selection.contains(item.url),
-                            isRenaming: tab.renamingURL == item.url,
-                            mark: tab.compareMarks[item.name],
-                            commitRename: { name in
-                                if let name { workspace.commitRename(item.url, to: name, in: tab) } else { tab.renamingURL = nil }
-                                focused = true
-                            })
-                        .id(item.url)
-                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.space)) } action: { frames.byURL[item.url] = $0 }
-                        .gesture(TapGesture(count: 2).onEnded {
-                            workspace.activate(pane)
-                            workspace.openSelection([item.url])
-                        })
-                        .simultaneousGesture(TapGesture().onEnded { click(item) })
-                        .contextMenu {
-                            MenuEntriesView(sections: ContextMenuBuilder.sections(
-                                workspace: workspace, tab: tab, selected: menuTargets(for: item), includeOpenWith: false))
-                        }
-                        .draggable(item.url) {
-                            Label(item.name, systemImage: item.isDirectory ? "folder" : "doc")
-                        }
-                        .dropDestination(for: URL.self) { urls, _ in
-                            guard item.isNavigable else { return false }
-                            FileOperationQueue.shared.transfer(urls.filter { !$0.isSameFile(as: item.url) }, to: item.url) { _, error in
-                                workspace.report(error)
+                    if showsGroups {
+                        ForEach(groups, id: \.id) { group in
+                            Section {
+                                ForEach(group.items) { item in cell(for: item) }
+                            } header: {
+                                GridGroupHeader(title: group.title, count: group.items.count)
                             }
-                            return true
                         }
+                    } else {
+                        ForEach(items) { item in cell(for: item) }
                     }
                 }
                 .padding(12)
@@ -111,8 +94,55 @@ struct FileGridView: View {
         .onKeyPress(.tab) { workspace.focusNextPane(); return .handled }
         .onKeyPress(.leftArrow) { move(by: -1) }
         .onKeyPress(.rightArrow) { move(by: 1) }
-        .onKeyPress(.upArrow) { move(by: -columnCount) }
-        .onKeyPress(.downArrow) { move(by: columnCount) }
+        .onKeyPress(.upArrow) { moveVertically(-1) }
+        .onKeyPress(.downArrow) { moveVertically(1) }
+        .onDisappear { springLoader.cancel() }
+    }
+
+    private func cell(for item: FileItem) -> some View {
+                GridCell(
+                    item: item,
+                    isSelected: tab.selection.contains(item.url),
+                    isRenaming: tab.renamingURL == item.url,
+                    mark: tab.compareMarks[item.name],
+                    commitRename: { name in
+                        if let name { workspace.commitRename(item.url, to: name, in: tab) } else { tab.renamingURL = nil }
+                        focused = true
+                    })
+                .id(item.url)
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.space)) } action: { frames.byURL[item.url] = $0 }
+                .gesture(TapGesture(count: 2).onEnded {
+                    workspace.activate(pane)
+                    workspace.openSelection([item.url])
+                })
+                .simultaneousGesture(TapGesture().onEnded { click(item) })
+                .contextMenu {
+                    MenuEntriesView(sections: ContextMenuBuilder.sections(
+                        workspace: workspace, tab: tab, selected: menuTargets(for: item), includeOpenWith: false))
+                }
+                .draggable(item.url) {
+                    Label(item.name, systemImage: item.isDirectory ? "folder" : "doc")
+                }
+                .dropDestination(for: URL.self) { urls, _ in
+                    guard item.isNavigable else { return false }
+                    springLoader.cancel()
+                    FileOperationQueue.shared.transfer(urls.filter { !$0.isSameFile(as: item.url) }, to: item.url) { _, error in
+                        workspace.report(error)
+                    }
+                    return true
+                } isTargeted: { targeted in
+                    // Holding a drag over a folder opens it (spring-loading), like Finder.
+                    guard item.isNavigable else { return }
+                    if targeted {
+                springLoader.open = { [workspace, pane, tab] folder in
+                    workspace.activate(pane)
+                    tab.navigate(to: folder)
+                }
+                springLoader.hover(item.url)
+            } else {
+                springLoader.leave(item.url)
+            }
+                }
     }
 
     /// Scrolls a remembered item to the top once it has loaded (items arrive after navigation).
@@ -197,8 +227,44 @@ struct FileGridView: View {
         return .handled
     }
 
+    /// ↑/↓: the nearest item in the row above or below. With groups, rows don't line up across a
+    /// header, so this goes by where the cells actually are instead of counting columns.
+    private func moveVertically(_ direction: Int) -> KeyPress.Result {
+        guard showsGroups, let current = items.last(where: { tab.selection.contains($0.url) }),
+              let from = frames.byURL[current.url] else { return move(by: direction * columnCount) }
+        let candidates = items.compactMap { item -> (FileItem, CGRect)? in
+            guard let frame = frames.byURL[item.url] else { return nil }
+            let ahead = direction > 0 ? frame.minY > from.maxY - 1 : frame.maxY < from.minY + 1
+            return ahead ? (item, frame) : nil
+        }
+        guard let rowY = candidates.map({ $0.1.midY }).min(by: { abs($0 - from.midY) < abs($1 - from.midY) }) else {
+            return .handled
+        }
+        let row = candidates.filter { abs($0.1.midY - rowY) < 1 }
+        guard let next = row.min(by: { abs($0.1.midX - from.midX) < abs($1.1.midX - from.midX) })?.0 else { return .handled }
+        tab.selection = [next.url]
+        anchor = next.url
+        return .handled
+    }
+
     private func menuTargets(for item: FileItem) -> [FileItem] {
         tab.selection.contains(item.url) ? items.filter { tab.selection.contains($0.url) } : [item]
+    }
+}
+
+/// "今天 · 12" above a group of icons.
+private struct GridGroupHeader: View {
+    let title: String
+    let count: Int
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(title).font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
+            Text("\(count)").font(.system(size: 11)).monospacedDigit().foregroundStyle(.tertiary)
+            Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1)
+        }
+        .padding(.top, 8)
+        .padding(.horizontal, 2)
     }
 }
 

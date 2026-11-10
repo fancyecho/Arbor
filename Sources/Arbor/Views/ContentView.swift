@@ -113,6 +113,27 @@ struct WorkspaceWindow: View {
             case "sync":
                 workspace.showSync = true
                 return
+            case "tree":
+                // The list of ARBOR_DEMO_DIR with ARBOR_EXPAND (comma-separated names, ⌥ with a leading "+")
+                // expanded, grouped by ARBOR_GROUP, showing ARBOR_COLUMNS.
+                let env = ProcessInfo.processInfo.environment
+                guard let path = env["ARBOR_DEMO_DIR"] else { return }
+                let folder = URL(fileURLWithPath: path)
+                let tab = workspace.visiblePanes[0].activeTab
+                tab.navigate(to: folder)
+                tab.viewMode = env["ARBOR_GRID"] != nil ? .grid : .list
+                if let panes = env["ARBOR_PANES"].flatMap(Int.init) { workspace.setPaneCount(panes) }
+                if let columns = env["ARBOR_COLUMNS"] { AppSettings.shared.listColumns = columns.components(separatedBy: ",") }
+                if let group = env["ARBOR_GROUP"].flatMap(GroupBy.init(rawValue:)) { tab.groupBy = group }
+                if let sort = env["ARBOR_SORT"].flatMap(SortKey.init(rawValue:)) { workspace.setSort(sort) }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    for name in (env["ARBOR_EXPAND"] ?? "").components(separatedBy: ",") where !name.isEmpty {
+                        let all = name.hasPrefix("+")
+                        tab.setExpanded(folder.appendingPathComponent(all ? String(name.dropFirst()) : name), true, all: all)
+                    }
+                    if let select = env["ARBOR_SELECT"] { tab.selection = [folder.appendingPathComponent(select)] }
+                }
+                return
             case "settings":
                 openSettings()
                 return

@@ -69,6 +69,10 @@ enum ContextMenuBuilder {
                 ],
                 commandEntries(ws, []),
                 [
+                    MenuEntry(L("排序方式"), symbol: "arrow.up.arrow.down", children: [sortEntries(ws, tab)]),
+                    MenuEntry(L("分组方式"), symbol: "rectangle.grid.1x2", children: groupEntries(ws, tab)),
+                ],
+                [
                     MenuEntry(AppSettings.shared.showHidden ? L("隐藏隐藏文件") : L("显示隐藏文件"), symbol: "eye") { ws.toggleHidden() },
                     MenuEntry(L("批量重命名全部…"), symbol: "character.cursor.ibeam") { ws.batchRename([]) },
                     MenuEntry(L("导出目录树"), symbol: "list.bullet.indent") { ws.exportTree(tab.url) },
@@ -161,6 +165,23 @@ enum ContextMenuBuilder {
             MenuEntry(L("移除背景"), symbol: "person.crop.rectangle") { ws.runImageJob(.removeBackground, urls) },
         ]
         return [MenuEntry(L("图片"), symbol: "photo", children: [convert, resize, other])]
+    }
+
+    private static func sortEntries(_ ws: WorkspaceState, _ tab: TabState) -> [MenuEntry] {
+        SortKey.allCases.filter { $0 != .location || tab.isSearchMode }.map { key in
+            var entry = MenuEntry(key.title) { ws.setSort(key) }
+            entry.isChecked = tab.sort.key == key
+            return entry
+        }
+    }
+
+    private static func groupEntries(_ ws: WorkspaceState, _ tab: TabState) -> [[MenuEntry]] {
+        let entries = GroupBy.allCases.map { groupBy in
+            var entry = MenuEntry(groupBy.title) { ws.setGroupBy(groupBy) }
+            entry.isChecked = tab.groupBy == groupBy
+            return entry
+        }
+        return [Array(entries.prefix(1)), Array(entries.dropFirst())]
     }
 
     private static func templateEntries(_ ws: WorkspaceState) -> [[MenuEntry]] {

@@ -82,6 +82,7 @@ private struct TabChip: View {
 
     @State private var hovering = false
     @State private var isFileTarget = false
+    @State private var springLoader = SpringLoader()
 
     var body: some View {
         HStack(spacing: 5) {
@@ -143,7 +144,8 @@ private struct TabChip: View {
             return NSItemProvider(item: tab.id.uuidString as NSString, typeIdentifier: UTType.arborTab.identifier)
         }
         .onDrop(of: [.arborTab, .fileURL],
-                delegate: TabChipDropDelegate(workspace: workspace, pane: pane, target: tab, isFileTarget: $isFileTarget))
+                delegate: TabChipDropDelegate(workspace: workspace, pane: pane, target: tab, isFileTarget: $isFileTarget,
+                                              springLoader: springLoader))
     }
 
     /// A copy into this tab's folder grows a bar along the chip's bottom edge, then the chip glows once.
@@ -203,6 +205,7 @@ private struct TabChipDropDelegate: DropDelegate {
     let pane: PaneState
     let target: TabState
     @Binding var isFileTarget: Bool
+    let springLoader: SpringLoader
 
     func validateDrop(info: DropInfo) -> Bool {
         info.hasItemsConforming(to: [.arborTab, .fileURL])
@@ -218,10 +221,20 @@ private struct TabChipDropDelegate: DropDelegate {
             TabDrag.pane = pane
         } else {
             isFileTarget = true
+            // Holding files over a tab brings it to the front, like Finder, so they can go deeper in.
+            let (workspace, pane, target) = (workspace, pane, target)
+            springLoader.open = { _ in
+                workspace.activate(pane)
+                pane.activeTabID = target.id
+            }
+            springLoader.hover(target.url)
         }
     }
 
-    func dropExited(info: DropInfo) { isFileTarget = false }
+    func dropExited(info: DropInfo) {
+        isFileTarget = false
+        springLoader.cancel()
+    }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
         DropProposal(operation: info.hasItemsConforming(to: [.arborTab]) ? .move : .copy)
@@ -229,6 +242,7 @@ private struct TabChipDropDelegate: DropDelegate {
 
     func performDrop(info: DropInfo) -> Bool {
         isFileTarget = false
+        springLoader.cancel()
         if info.hasItemsConforming(to: [.arborTab]) {
             TabDrag.tab = nil
             TabDrag.pane = nil

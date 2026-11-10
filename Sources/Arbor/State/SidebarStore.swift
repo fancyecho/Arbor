@@ -114,22 +114,25 @@ final class FolderMemory {
     struct Entry {
         var selection: Set<String>
         var anchor: String?
+        /// Folders expanded in the list view.
+        var expanded: Set<String> = []
     }
 
     private var entries: [String: Entry] = [:]
     private var order: [String] = []
     private let limit = 300
 
-    func remember(_ folder: URL, selection: Set<URL>, anchor: URL?) {
+    func remember(_ folder: URL, selection: Set<URL>, anchor: URL?, expanded: Set<String> = []) {
         let key = folder.standardizedFileURL.path
-        entries[key] = Entry(selection: Set(selection.map(\.standardizedFileURL.path)), anchor: anchor?.standardizedFileURL.path)
+        entries[key] = Entry(selection: Set(selection.map(\.standardizedFileURL.path)), anchor: anchor?.standardizedFileURL.path,
+                             expanded: expanded)
         order.removeAll { $0 == key }
         order.append(key)
         if order.count > limit { entries[order.removeFirst()] = nil }
     }
 
-    func recall(_ folder: URL) -> (selection: Set<URL>, anchor: URL?)? {
+    func recall(_ folder: URL) -> (selection: Set<URL>, anchor: URL?, expanded: Set<String>)? {
         guard let entry = entries[folder.standardizedFileURL.path] else { return nil }
-        return (Set(entry.selection.map { URL(fileURLWithPath: $0) }), entry.anchor.map { URL(fileURLWithPath: $0) })
+        return (Set(entry.selection.map { URL(fileURLWithPath: $0) }), entry.anchor.map { URL(fileURLWithPath: $0) }, entry.expanded)
     }
 }

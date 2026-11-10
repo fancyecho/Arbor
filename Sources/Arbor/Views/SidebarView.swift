@@ -8,6 +8,7 @@ struct SidebarView: View {
 
     @Environment(\.arborTint) private var tint
     @Environment(\.colorScheme) private var colorScheme
+    @State private var springLoader = SpringLoader()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -164,8 +165,17 @@ struct SidebarView: View {
         .help(dimmed ? L("\(place.url.path)（不存在）") : place.url.path)
         // Dropping *onto* a row moves/copies files into that folder.
         .dropDestination(for: URL.self) { urls, _ in
+            springLoader.cancel()
             FileOperationQueue.shared.transfer(urls, to: place.url) { _, error in workspace.report(error) }
             return true
+        } isTargeted: { targeted in
+            // Holding a drag over a place opens it in the active pane, like Finder's sidebar.
+            if targeted {
+                springLoader.open = { [workspace] folder in workspace.activeTab.navigate(to: folder) }
+                springLoader.hover(place.url)
+            } else {
+                springLoader.leave(place.url)
+            }
         }
         .contextMenu {
             Button(L("在新标签页中打开"), systemImage: "plus.square.on.square") { workspace.openInNewTab(place.url) }

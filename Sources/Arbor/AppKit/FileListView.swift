@@ -1,8 +1,8 @@
 import AppKit
 import SwiftUI
 
-/// List view backed by NSTableView: native type-select, keyboard navigation, column sorting,
-/// drag & drop and inline rename that behave like Finder, and stay fast with 10k+ items.
+/// List view backed by NSOutlineView: native type-select, keyboard navigation, column sorting,
+/// drag & drop, inline rename and disclosure triangles that behave like Finder, and stay fast with 10k+ items.
 struct FileListView: NSViewRepresentable {
     let workspace: WorkspaceState
     let pane: PaneState
@@ -27,6 +27,14 @@ struct FileListView: NSViewRepresentable {
     var plannedWidth: CGFloat?
     /// Changes when a space scan finishes or updates, so scanned folder sizes show up in the size column.
     var spaceRevision = 0
+    /// The items in labeled groups; a single untitled group when the list isn't grouped.
+    var groups: [FileGroup] = []
+    var showsGroups = false
+    /// Whether folders get disclosure triangles (not while searching or filtering).
+    var showsTree = true
+    var expandedFolders: Set<String> = []
+    var treeRevision = 0
+    var lastOpenedRevision = 0
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -47,6 +55,10 @@ struct FileListView: NSViewRepresentable {
         table.allowsColumnResizing = true
         table.columnAutoresizingStyle = .noColumnAutoresizing // FileScrollView fits the name column
         table.headerView = NSTableHeaderView()
+        table.indentationPerLevel = 16
+        table.indentationMarkerFollowsCell = true
+        table.autoresizesOutlineColumn = false // FileScrollView owns the name column's width
+        table.floatsGroupRows = false
         table.dataSource = coordinator
         table.delegate = coordinator
         table.target = coordinator
@@ -65,6 +77,7 @@ struct FileListView: NSViewRepresentable {
             if column == .size { tableColumn.headerCell.alignment = .right }
             tableColumn.isHidden = column != .name
             table.addTableColumn(tableColumn)
+            if column == .name { table.outlineTableColumn = tableColumn }
         }
         let headerMenu = NSMenu()
         headerMenu.delegate = coordinator
@@ -76,8 +89,9 @@ struct FileListView: NSViewRepresentable {
         table.menu = menu
 
         table.onFocus = { [weak coordinator] in coordinator?.tableDidFocus() }
-        table.onDragLeave = { [weak coordinator] in coordinator?.hideDropHint() }
+        table.onDragLeave = { [weak coordinator] in coordinator?.dragLeft() }
         table.onKey = { [weak coordinator] event in coordinator?.handleKey(event) ?? false }
+        table.isSelectableRow = { [weak coordinator] row in coordinator?.fileItem(atRow: row) != nil }
 
         let scroll = FileScrollView()
         scroll.documentView = table
@@ -106,10 +120,10 @@ struct FileListView: NSViewRepresentable {
     // MARK: - Columns
 
     enum Column: String, CaseIterable {
-        case name, location, modified, created, size, kind, ext, tags
+        case name, location, modified, created, added, lastOpened, size, kind, ext, tags
 
         /// Columns the user can switch on and off from the header menu.
-        static let optional: [Column] = [.modified, .created, .size, .kind, .ext, .tags]
+        static let optional: [Column] = [.modified, .created, .added, .lastOpened, .size, .kind, .ext, .tags]
 
         var identifier: NSUserInterfaceItemIdentifier { .init(rawValue) }
         var title: String { sortKey.title }
@@ -121,6 +135,8 @@ struct FileListView: NSViewRepresentable {
             case .kind: .kind
             case .location: .location
             case .created: .created
+            case .added: .added
+            case .lastOpened: .lastOpened
             case .ext: .ext
             case .tags: .tags
             }
@@ -128,11 +144,11 @@ struct FileListView: NSViewRepresentable {
         var width: CGFloat {
             switch self {
             case .name: 260
-            case .modified: 124
+            case .modified, .created, .added: 124
+            case .lastOpened: 128
             case .size: 118
             case .kind: 110
             case .location: 180
-            case .created: 124
             case .ext: 64
             case .tags: 90
             }
@@ -140,22 +156,41 @@ struct FileListView: NSViewRepresentable {
         var minWidth: CGFloat { self == .name ? 120 : 50 }
     }
 
+    // MARK: - Rows
+
+    /// One row of the outline: a file (with its loaded contents when it's an expanded folder) or a group
+    /// header. Reused across reloads by path, so NSOutlineView keeps tracking the same rows.
+    final class Node {
+        var item: FileItem?
+        var header: (title: String, count: Int)?
+        var depth = 0
+        var children: [Node]?
+    }
+
     // MARK: - Coordinator
 
     @MainActor
-    final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSMenuDelegate, NSTextFieldDelegate {
+    final class Coordinator: NSObject, NSOutlineViewDataSource, NSOutlineViewDelegate, NSMenuDelegate, NSTextFieldDelegate {
         weak var table: FileTableView?
         weak var headerMenu: NSMenu?
         var parent: FileListView!
+        private var roots: [Node] = []
+        private var nodes: [String: Node] = [:]
         private var items: [FileItem] = []
+        private var groups: [FileGroup] = []
+        private var showsGroups = false
+        private var showsTree = true
+        private var expanded: Set<String> = []
+        private var treeRevision = -1
+        private var lastOpenedRevision = -1
         private var marks: [String: CompareStatus] = [:]
         private var tint: NSColor = .controlAccentColor
         private var insights = true
         /// Largest file in the folder; size bars are relative to it.
         private var maxSize: Int64 = 1
         private var spaceRevision = -1
-        /// Scanned sizes of this folder's subfolders, by name (empty when unscanned or showing search results).
-        private var folderSizes: [String: Int64] = [:]
+        /// Scanned sizes of subfolders, by parent folder path and then by name (empty when unscanned).
+        private var folderSizes: [String: [String: Int64]] = [:]
         private var tabID: UUID?
         private var isSyncing = false
         /// Table callbacks fired while it is being set up (e.g. restoring autosaved columns) are ignored.
@@ -163,6 +198,7 @@ struct FileListView: NSViewRepresentable {
         private var lastFocusToken = -1
         private var editingURL: URL?
         private var renameCancelled = false
+        private lazy var springLoader = SpringLoader { [weak self] folder in self?.springOpen(folder) }
 
         private var workspace: WorkspaceState { parent.workspace }
         private var tab: TabState { parent.tab }
@@ -194,16 +230,30 @@ struct FileListView: NSViewRepresentable {
                     (rowView as? TintedRowView)?.tint = view.tint
                 }
             }
-            if tabChanged || items != view.items || marks != view.compareMarks || insights != view.showsInsights
-                || spaceRevision != view.spaceRevision {
+            if tabChanged || items != view.items || groups != view.groups || showsGroups != view.showsGroups
+                || showsTree != view.showsTree || expanded != view.expandedFolders || treeRevision != view.treeRevision
+                || lastOpenedRevision != view.lastOpenedRevision
+                || marks != view.compareMarks || insights != view.showsInsights || spaceRevision != view.spaceRevision {
                 items = view.items
+                groups = view.groups
+                showsGroups = view.showsGroups
+                showsTree = view.showsTree
+                expanded = view.expandedFolders
+                treeRevision = view.treeRevision
+                lastOpenedRevision = view.lastOpenedRevision
                 marks = view.compareMarks
                 insights = view.showsInsights
                 spaceRevision = view.spaceRevision
-                folderSizes = view.showsLocation ? [:] : SpaceIndex.shared.childSizes(of: view.tab.url) ?? [:]
-                maxSize = max(1, view.items.compactMap { $0.isNavigable ? folderSizes[$0.name] : $0.size }.max() ?? 1)
+                folderSizes = [:]
+                let rootSizes = view.showsLocation ? [:] : sizes(in: view.tab.url)
+                maxSize = max(1, view.items.compactMap { $0.isNavigable ? rootSizes[$0.name] : $0.size }.max() ?? 1)
                 tabID = view.tab.id
+                rebuild()
                 table.reloadData()
+                syncExpansion(roots)
+                if desired.contains(Column.lastOpened.rawValue) {
+                    LastOpenedIndex.shared.prefetch(allRowItems().map(\.url), folder: view.showsLocation ? nil : view.tab.url)
+                }
                 // Switching tabs returns to where that tab was scrolled.
                 if tabChanged, !(view.tab.scrollAnchor.map(scrollToTop) ?? false) { table.scroll(.zero) }
                 applyPendingAnchor(view)
@@ -231,6 +281,84 @@ struct FileListView: NSViewRepresentable {
             }
         }
 
+        // MARK: Building rows
+
+        private static func key(_ url: URL) -> String { "f:" + url.standardizedFileURL.path }
+
+        /// Turns the groups and expanded folders into nodes, reusing the node of every row that stays.
+        private func rebuild() {
+            var fresh: [String: Node] = [:]
+            func fileNode(_ item: FileItem, depth: Int) -> Node {
+                let key = Self.key(item.url)
+                let node = fresh[key] ?? nodes[key] ?? Node()
+                node.item = item
+                node.header = nil
+                node.depth = depth
+                fresh[key] = node
+                if showsTree, item.isNavigable, depth < 64, let children = tab.children(of: item.url) {
+                    node.children = children.map { fileNode($0, depth: depth + 1) }
+                } else {
+                    node.children = nil
+                }
+                return node
+            }
+            var rows: [Node] = []
+            for group in groups {
+                if showsGroups {
+                    let key = "g:" + group.id
+                    let header = nodes[key] ?? Node()
+                    header.item = nil
+                    header.header = (group.title, group.items.count)
+                    header.children = nil
+                    fresh[key] = header
+                    rows.append(header)
+                }
+                rows += group.items.map { fileNode($0, depth: 0) }
+            }
+            roots = rows
+            nodes = fresh
+        }
+
+        /// Opens the folders the tab has expanded (and closes the rest) without reporting it back.
+        private func syncExpansion(_ level: [Node]) {
+            guard let table else { return }
+            for node in level {
+                guard let item = node.item, item.isNavigable else { continue }
+                let wanted = showsTree && expanded.contains(TabState.treeKey(item.url))
+                if wanted, !table.isItemExpanded(node) {
+                    table.expandItem(node)
+                } else if !wanted, table.isItemExpanded(node) {
+                    table.collapseItem(node)
+                }
+                if wanted, let children = node.children { syncExpansion(children) }
+            }
+        }
+
+        func fileItem(atRow row: Int) -> FileItem? {
+            guard let table, row >= 0, row < table.numberOfRows else { return nil }
+            return (table.item(atRow: row) as? Node)?.item
+        }
+
+        private func row(of url: URL) -> Int? {
+            guard let table, let node = nodes[Self.key(url)] else { return nil }
+            let row = table.row(forItem: node)
+            return row >= 0 ? row : nil
+        }
+
+        /// Every file row currently shown, top to bottom.
+        private func allRowItems() -> [FileItem] {
+            guard let table else { return [] }
+            return (0..<table.numberOfRows).compactMap(fileItem(atRow:))
+        }
+
+        private func sizes(in folder: URL) -> [String: Int64] {
+            let key = folder.standardizedFileURL.path
+            if let known = folderSizes[key] { return known }
+            let found = SpaceIndex.shared.childSizes(of: folder) ?? [:]
+            folderSizes[key] = found
+            return found
+        }
+
         /// Scrolls a remembered item back to the top once it has loaded, then clears the request.
         private func applyPendingAnchor(_ view: FileListView) {
             guard let anchor = view.pendingScrollAnchor, scrollToTop(anchor) else { return }
@@ -240,8 +368,7 @@ struct FileListView: NSViewRepresentable {
 
         @discardableResult
         private func scrollToTop(_ url: URL) -> Bool {
-            guard let table, let scroll = table.enclosingScrollView,
-                  let row = items.firstIndex(where: { $0.url.isSameFile(as: url) }) else { return false }
+            guard let table, let scroll = table.enclosingScrollView, let row = row(of: url) else { return false }
             let clip = scroll.contentView
             let inset = clip.contentInsets.top
             clip.scroll(to: NSPoint(x: clip.bounds.minX, y: table.rect(ofRow: row).minY - inset))
@@ -264,69 +391,144 @@ struct FileListView: NSViewRepresentable {
                 menu.addItem(item)
             }
             menu.addItem(.separator())
+            let groupMenu = NSMenu()
+            let tab = self.tab
+            for groupBy in GroupBy.allCases {
+                let item = ClosureMenuItem(title: groupBy.title) { tab.groupBy = groupBy }
+                item.state = tab.groupBy == groupBy ? .on : .off
+                groupMenu.addItem(item)
+                if groupBy == .none { groupMenu.addItem(.separator()) }
+            }
+            let group = NSMenuItem(title: L("分组方式"), action: nil, keyEquivalent: "")
+            group.submenu = groupMenu
+            menu.addItem(group)
+            menu.addItem(.separator())
             menu.addItem(ClosureMenuItem(title: L("恢复默认列")) { settings.listColumns = ["modified", "size", "kind"] })
         }
 
         @objc func didScroll(_ notification: Notification) {
-            guard let table, let clip = table.enclosingScrollView?.contentView, !items.isEmpty else { return }
-            let row = table.row(at: NSPoint(x: 1, y: clip.bounds.minY + clip.contentInsets.top + 1))
-            if row >= 0, row < items.count { tab.scrollAnchor = items[row].url }
+            guard let table, let clip = table.enclosingScrollView?.contentView, table.numberOfRows > 0 else { return }
+            var row = table.row(at: NSPoint(x: 1, y: clip.bounds.minY + clip.contentInsets.top + 1))
+            guard row >= 0 else { return }
+            while row < table.numberOfRows, fileItem(atRow: row) == nil { row += 1 } // skip a group header
+            if let item = fileItem(atRow: row) { tab.scrollAnchor = item.url }
         }
 
         private func selectedURLs() -> Set<URL> {
             guard let table else { return [] }
-            return Set(table.selectedRowIndexes.compactMap { $0 < items.count ? items[$0].url : nil })
+            return Set(table.selectedRowIndexes.compactMap { fileItem(atRow: $0)?.url })
         }
 
         private func applySelection(_ urls: Set<URL>, scrollToFirst: Bool) {
             guard let table else { return }
             var indexes = IndexSet()
-            for (index, item) in items.enumerated() where urls.contains(item.url) { indexes.insert(index) }
+            if !urls.isEmpty {
+                for row in 0..<table.numberOfRows where fileItem(atRow: row).map({ urls.contains($0.url) }) == true {
+                    indexes.insert(row)
+                }
+            }
             table.selectRowIndexes(indexes, byExtendingSelection: false)
             if scrollToFirst, let first = indexes.first { table.scrollRowToVisible(first) }
         }
 
         // MARK: Data source
 
-        func numberOfRows(in tableView: NSTableView) -> Int { items.count }
+        func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
+            guard let node = item as? Node else { return roots.count }
+            return node.children?.count ?? 0
+        }
 
-        func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
-            let rowView = (tableView.makeView(withIdentifier: TintedRowView.identifier, owner: nil) as? TintedRowView) ?? TintedRowView()
+        func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
+            guard let node = item as? Node else { return roots[index] }
+            return node.children?[index] ?? Node()
+        }
+
+        func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
+            showsTree && (item as? Node)?.item?.isNavigable == true
+        }
+
+        func outlineView(_ outlineView: NSOutlineView, isGroupItem item: Any) -> Bool {
+            (item as? Node)?.header != nil
+        }
+
+        func outlineView(_ outlineView: NSOutlineView, heightOfRowByItem item: Any) -> CGFloat {
+            (item as? Node)?.header != nil ? 32 : outlineView.rowHeight
+        }
+
+        func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? {
+            if (item as? Node)?.header != nil { return GroupHeaderRowView() }
+            let rowView = (outlineView.makeView(withIdentifier: TintedRowView.identifier, owner: nil) as? TintedRowView) ?? TintedRowView()
             rowView.identifier = TintedRowView.identifier
             rowView.tint = tint
             return rowView
         }
 
-        func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-            guard let tableColumn, let column = Column(rawValue: tableColumn.identifier.rawValue), row < items.count else { return nil }
-            let item = items[row]
-            let cell = (tableView.makeView(withIdentifier: tableColumn.identifier, owner: nil) as? FileCellView)
+        func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
+            guard let node = item as? Node else { return nil }
+            if let header = node.header {
+                guard tableColumn == nil else { return nil }
+                let cell = (outlineView.makeView(withIdentifier: GroupHeaderCell.identifier, owner: nil) as? GroupHeaderCell)
+                    ?? GroupHeaderCell()
+                cell.identifier = GroupHeaderCell.identifier
+                cell.configure(title: header.title, count: header.count)
+                return cell
+            }
+            guard let tableColumn, let column = Column(rawValue: tableColumn.identifier.rawValue), let item = node.item else { return nil }
+            let cell = (outlineView.makeView(withIdentifier: tableColumn.identifier, owner: nil) as? FileCellView)
                 ?? FileCellView(column: column)
             cell.identifier = tableColumn.identifier
-            let folderSize = item.isNavigable && column == .size ? folderSizes[item.name] : nil
-            cell.configure(item: item, column: column, mark: marks[item.name],
-                           insight: insights ? CellInsight(maxSize: maxSize, tint: tint) : nil, folderSize: folderSize)
+            let parentFolder = item.url.deletingLastPathComponent()
+            let folderSize = item.isNavigable && column == .size && !parent.showsLocation
+                ? sizes(in: parentFolder)[item.name] : nil
+            let mark = node.depth == 0 ? marks[item.name] : nil
+            cell.configure(item: item, column: column, mark: mark,
+                           insight: insights ? CellInsight(maxSize: maxSize, tint: tint) : nil, folderSize: folderSize,
+                           lastOpened: column == .lastOpened ? LastOpenedIndex.shared.date(for: item.url) : nil)
             if column == .name { cell.textField?.delegate = self }
             return cell
         }
 
-        func tableView(_ tableView: NSTableView, typeSelectStringFor tableColumn: NSTableColumn?, row: Int) -> String? {
-            tableColumn?.identifier == Column.name.identifier && row < items.count ? items[row].name : nil
+        func outlineView(_ outlineView: NSOutlineView, typeSelectStringFor tableColumn: NSTableColumn?, item: Any) -> String? {
+            tableColumn?.identifier == Column.name.identifier ? (item as? Node)?.item?.name : nil
         }
 
-        func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
-            guard isConfigured, !isSyncing, let descriptor = tableView.sortDescriptors.first,
+        func outlineView(_ outlineView: NSOutlineView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
+            guard isConfigured, !isSyncing, let descriptor = outlineView.sortDescriptors.first,
                   let key = descriptor.key.flatMap(SortKey.init(rawValue:)) else { return }
             tab.sort.key = key
             tab.sort.ascending = descriptor.ascending
         }
 
-        func tableViewSelectionDidChange(_ notification: Notification) {
+        func outlineView(_ outlineView: NSOutlineView, shouldSelectItem item: Any) -> Bool {
+            (item as? Node)?.item != nil
+        }
+
+        func outlineView(_ outlineView: NSOutlineView, selectionIndexesForProposedSelection proposed: IndexSet) -> IndexSet {
+            proposed.filteredIndexSet { fileItem(atRow: $0) != nil }
+        }
+
+        func outlineViewSelectionDidChange(_ notification: Notification) {
             guard isConfigured, !isSyncing else { return }
             let urls = selectedURLs()
             if tab.selection != urls { tab.selection = urls }
-            let ordered = items.filter { urls.contains($0.url) }.map(\.url)
+            let ordered = allRowItems().filter { urls.contains($0.url) }.map(\.url)
             QuickLookController.shared.selectionChanged(ordered)
+        }
+
+        // MARK: Expanding
+
+        func outlineViewItemDidExpand(_ notification: Notification) {
+            guard !isSyncing, let item = (notification.userInfo?["NSObject"] as? Node)?.item else { return }
+            // ⌥-click on the triangle (or ⌥→) opens everything inside too, like Finder.
+            let all = NSApp.currentEvent?.modifierFlags.contains(.option) == true
+            expanded.insert(TabState.treeKey(item.url))
+            tab.setExpanded(item.url, true, all: all)
+        }
+
+        func outlineViewItemDidCollapse(_ notification: Notification) {
+            guard !isSyncing, let item = (notification.userInfo?["NSObject"] as? Node)?.item else { return }
+            expanded.remove(TabState.treeKey(item.url))
+            tab.setExpanded(item.url, false)
         }
 
         // MARK: Interaction
@@ -340,11 +542,10 @@ struct FileListView: NSViewRepresentable {
             }
         }
 
-        @objc func doubleClicked(_ sender: NSTableView) {
-            let row = sender.clickedRow
-            guard row >= 0, row < items.count else { return }
+        @objc func doubleClicked(_ sender: NSOutlineView) {
+            guard let item = fileItem(atRow: sender.clickedRow) else { return }
             workspace.activate(parent.pane)
-            workspace.openSelection([items[row].url])
+            workspace.openSelection([item.url])
         }
 
         /// Returns true if the key was handled.
@@ -368,8 +569,9 @@ struct FileListView: NSViewRepresentable {
         // MARK: Inline rename
 
         private func beginRename(_ url: URL) {
-            guard let table, let row = items.firstIndex(where: { $0.url.isSameFile(as: url) }),
-                  let cell = table.view(atColumn: 0, row: row, makeIfNecessary: true) as? FileCellView,
+            guard let table, let row = row(of: url), let item = fileItem(atRow: row) else { return }
+            let column = table.column(withIdentifier: Column.name.identifier)
+            guard column >= 0, let cell = table.view(atColumn: column, row: row, makeIfNecessary: true) as? FileCellView,
                   let field = cell.textField else { return }
             editingURL = url
             renameCancelled = false
@@ -382,8 +584,7 @@ struct FileListView: NSViewRepresentable {
             if let editor = field.currentEditor() {
                 let name = field.stringValue as NSString
                 let ext = (name.pathExtension as NSString).length
-                let isFolder = items[row].isDirectory
-                let length = (ext > 0 && !isFolder) ? name.length - ext - 1 : name.length
+                let length = (ext > 0 && !item.isDirectory) ? name.length - ext - 1 : name.length
                 editor.selectedRange = NSRange(location: 0, length: max(length, 0))
             }
         }
@@ -437,18 +638,27 @@ struct FileListView: NSViewRepresentable {
 
         // MARK: Drag & drop
 
-        func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
-            row < items.count ? items[row].url as NSURL : nil
+        func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> NSPasteboardWriting? {
+            (item as? Node)?.item.map { $0.url as NSURL }
         }
 
-        func tableView(_ tableView: NSTableView, validateDrop info: NSDraggingInfo, proposedRow row: Int,
-                       proposedDropOperation dropOperation: NSTableView.DropOperation) -> NSDragOperation {
-            var destination = tab.url
-            if dropOperation == .on, row < items.count, items[row].isNavigable {
-                destination = items[row].url
-            } else {
-                tableView.setDropRow(-1, dropOperation: .on)
-            }
+        /// Where a drop lands, and the row to highlight for it (nil = the whole list): a folder row takes
+        /// it; a file inside an expanded folder hands it to that folder, like Finder.
+        private func dropTarget(_ proposed: Node?) -> (url: URL, node: Node?) {
+            guard let table, let proposed, let item = proposed.item else { return (tab.url, nil) }
+            if item.isNavigable { return (item.url, proposed) }
+            if let parent = table.parent(forItem: proposed) as? Node, let folder = parent.item { return (folder.url, parent) }
+            return (tab.url, nil)
+        }
+
+        func outlineView(_ outlineView: NSOutlineView, validateDrop info: NSDraggingInfo, proposedItem item: Any?,
+                         proposedChildIndex index: Int) -> NSDragOperation {
+            let proposed = item as? Node
+            let (destination, target) = dropTarget(proposed)
+            outlineView.setDropItem(target, dropChildIndex: NSOutlineViewDropOnItemIndex)
+            // Holding still over a folder opens it (spring-loading), like Finder.
+            let hovering = index == NSOutlineViewDropOnItemIndex && target != nil && target === proposed
+            springLoader.hover(hovering ? destination : nil)
             let urls = Self.draggedURLs(info)
             guard !urls.isEmpty, !urls.contains(where: { $0.isSameFile(as: destination) }) else {
                 hideDropHint()
@@ -463,6 +673,19 @@ struct FileListView: NSViewRepresentable {
             showDropHint(info, count: urls.count, operation: operation, destination: destination,
                          sameVolume: FileOperations.isSameVolume(urls, destination))
             return operation
+        }
+
+        /// The drag left the list or ended: no hint, and no folder about to spring open.
+        func dragLeft() {
+            hideDropHint()
+            springLoader.cancel()
+        }
+
+        private func springOpen(_ folder: URL) {
+            guard let table else { return }
+            table.flashDropTarget()
+            workspace.activate(parent.pane)
+            tab.navigate(to: folder)
         }
 
         // MARK: Drop hint
@@ -500,17 +723,17 @@ struct FileListView: NSViewRepresentable {
             dropHint?.isHidden = true
         }
 
-        func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int,
-                       dropOperation: NSTableView.DropOperation) -> Bool {
-            hideDropHint()
-            let destination = (row >= 0 && row < items.count && items[row].isNavigable) ? items[row].url : tab.url
+        func outlineView(_ outlineView: NSOutlineView, acceptDrop info: NSDraggingInfo, item: Any?, childIndex index: Int) -> Bool {
+            dragLeft()
+            let destination = dropTarget(item as? Node).url
             let urls = Self.draggedURLs(info)
             let operation = Self.operation(for: info, sources: urls, destination: destination)
             let tab = self.tab
             let workspace = self.workspace
             let completion: ([URL], Error?) -> Void = { results, error in
                 workspace.report(error)
-                tab.reload(selecting: destination.isSameFile(as: tab.url) ? Set(results) : nil)
+                let shown = destination.isSameFile(as: tab.url) || tab.isExpanded(destination)
+                tab.reload(selecting: shown ? Set(results) : nil)
             }
             if operation == .move {
                 FileOperationQueue.shared.move(urls, to: destination, completion: completion)
@@ -544,10 +767,13 @@ struct FileListView: NSViewRepresentable {
             workspace.activate(parent.pane)
 
             let row = table.clickedRow
-            if row >= 0, row < items.count, !table.selectedRowIndexes.contains(row) {
+            let clicked = fileItem(atRow: row)
+            if clicked != nil, !table.selectedRowIndexes.contains(row) {
                 table.selectRowIndexes([row], byExtendingSelection: false)
             }
-            let selected = row >= 0 ? items.filter { tab.selection.contains($0.url) || $0.url == items[row].url } : []
+            let selected = clicked.map { clicked in
+                allRowItems().filter { tab.selection.contains($0.url) || $0.url == clicked.url }
+            } ?? []
             ContextMenuBuilder.build(into: menu, workspace: workspace, tab: tab, selected: selected)
         }
     }
@@ -618,7 +844,7 @@ final class FileScrollView: NSScrollView {
     private var transition: ColumnTransition?
 
     /// Dropped first when space runs out; the name column always stays.
-    private static let dropOrder = ["tags", "ext", "created", "kind", "location", "size", "modified"]
+    private static let dropOrder = ["tags", "ext", "lastOpened", "added", "created", "kind", "location", "size", "modified"]
     private static let comfortableNameWidth: CGFloat = 170
     /// Row insets of the `.inset` table style plus a little air, so rows never reach the card edge.
     private static let horizontalChrome: CGFloat = 34
@@ -715,9 +941,32 @@ final class FileScrollView: NSScrollView {
 
 // MARK: - Table view
 
-final class FileTableView: NSTableView {
+final class FileTableView: NSOutlineView {
     var onFocus: (() -> Void)?
     var onDragLeave: (() -> Void)?
+    /// False for group headers: they never join the selection, however it's made (click, ⇧, marquee).
+    var isSelectableRow: ((Int) -> Bool)?
+
+    override func selectRowIndexes(_ indexes: IndexSet, byExtendingSelection extend: Bool) {
+        guard let isSelectableRow else { return super.selectRowIndexes(indexes, byExtendingSelection: extend) }
+        super.selectRowIndexes(indexes.filteredIndexSet(includeInteger: isSelectableRow), byExtendingSelection: extend)
+    }
+
+    /// The folder a drag is held over blinks before it springs open, like Finder.
+    func flashDropTarget() {
+        guard let window else { return }
+        let target = row(at: convert(window.mouseLocationOutsideOfEventStream, from: nil))
+        guard target >= 0, let rowView = rowView(atRow: target, makeIfNecessary: false) else { return }
+        let flash = NSView(frame: rowView.bounds.insetBy(dx: 2.5, dy: 1.5))
+        flash.wantsLayer = true
+        flash.layer?.cornerRadius = 7
+        flash.layer?.backgroundColor = tint.withAlphaComponent(0.35).cgColor
+        rowView.addSubview(flash)
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = 0.25
+            flash.animator().alphaValue = 0
+        }, completionHandler: { flash.removeFromSuperview() })
+    }
 
     override func draggingExited(_ sender: NSDraggingInfo?) {
         super.draggingExited(sender)
@@ -728,7 +977,7 @@ final class FileTableView: NSTableView {
         // An optional NSDraggingDestination method NSTableView doesn't implement: calling super here
         // crashed (unrecognized selector) whenever a drag that had crossed the list ended elsewhere —
         // e.g. dragging an app out to AppCleaner.
-        if NSTableView.instancesRespond(to: #selector(NSDraggingDestination.draggingEnded(_:))) {
+        if NSOutlineView.instancesRespond(to: #selector(NSDraggingDestination.draggingEnded(_:))) {
             super.draggingEnded(sender)
         }
         onDragLeave?()
@@ -829,7 +1078,8 @@ final class FileTableView: NSTableView {
     // Keep clicks on empty space from leaving a stale clicked-row for the context menu.
     override func menu(for event: NSEvent) -> NSMenu? {
         let point = convert(event.locationInWindow, from: nil)
-        if row(at: point) < 0 { deselectAll(nil) }
+        let row = row(at: point)
+        if row < 0 || isSelectableRow?(row) == false { deselectAll(nil) }
         return super.menu(for: event)
     }
 
@@ -840,7 +1090,7 @@ final class FileTableView: NSTableView {
     @objc(_drawContextualMenuHighlightInClipRect:)
     private func drawContextMenuTarget(in clipRect: NSRect) {
         let clicked = clickedRow
-        guard clicked >= 0 else { return }
+        guard clicked >= 0, isSelectableRow?(clicked) != false else { return }
         let targets = selectedRowIndexes.contains(clicked) ? selectedRowIndexes : IndexSet(integer: clicked)
         let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         for run in targets.rangeView {
@@ -998,7 +1248,7 @@ final class FileCellView: NSTableCellView {
 
     /// `folderSize` comes from a space scan (folders have no size of their own on disk).
     func configure(item: FileItem, column: FileListView.Column, mark: CompareStatus? = nil, insight: CellInsight? = nil,
-                   folderSize: Int64? = nil) {
+                   folderSize: Int64? = nil, lastOpened: Date? = nil) {
         if let sizeBar {
             let size = item.isNavigable ? folderSize : item.size
             let fraction = Double(size ?? 0) / Double(insight?.maxSize ?? 1)
@@ -1039,6 +1289,10 @@ final class FileCellView: NSTableCellView {
             label.lineBreakMode = .byTruncatingHead
         case .created:
             label.stringValue = Format.date(item.created)
+        case .added:
+            label.stringValue = Format.date(item.added)
+        case .lastOpened:
+            label.stringValue = Format.date(lastOpened)
         case .ext:
             label.stringValue = item.isNavigable ? "" : item.fileExtension
         case .tags:
@@ -1203,4 +1457,56 @@ final class DropHintView: NSView {
         title.setFrameOrigin(NSPoint(x: 22, y: 22))
         detail.setFrameOrigin(NSPoint(x: 22, y: 6))
     }
+}
+
+// MARK: - Group headers
+
+/// "今天 · 12" above a group of rows, with a hairline that runs to the edge.
+final class GroupHeaderCell: NSTableCellView {
+    static let identifier = NSUserInterfaceItemIdentifier("GroupHeader")
+    private let title = NSTextField(labelWithString: "")
+    private let count = NSTextField(labelWithString: "")
+    private let rule = NSBox()
+
+    init() {
+        super.init(frame: .zero)
+        title.font = .systemFont(ofSize: 12, weight: .semibold)
+        title.textColor = .secondaryLabelColor
+        title.lineBreakMode = .byTruncatingTail
+        count.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+        count.textColor = .tertiaryLabelColor
+        rule.boxType = .custom
+        rule.borderWidth = 0
+        rule.fillColor = NSColor.labelColor.withAlphaComponent(0.08)
+        for view in [title, count, rule] {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(view)
+        }
+        title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        count.setContentCompressionResistancePriority(.required, for: .horizontal)
+        NSLayoutConstraint.activate([
+            title.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
+            title.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -6),
+            count.leadingAnchor.constraint(equalTo: title.trailingAnchor, constant: 6),
+            count.firstBaselineAnchor.constraint(equalTo: title.firstBaselineAnchor),
+            count.trailingAnchor.constraint(lessThanOrEqualTo: rule.leadingAnchor, constant: -8),
+            rule.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
+            rule.heightAnchor.constraint(equalToConstant: 1),
+            rule.centerYAnchor.constraint(equalTo: title.centerYAnchor),
+            rule.widthAnchor.constraint(greaterThanOrEqualToConstant: 0),
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    func configure(title text: String, count number: Int) {
+        title.stringValue = text
+        count.stringValue = "\(number)"
+    }
+}
+
+/// A group header's row: no selection wash, no group-row background.
+final class GroupHeaderRowView: NSTableRowView {
+    override func drawBackground(in dirtyRect: NSRect) {}
+    override func drawSelection(in dirtyRect: NSRect) {}
 }

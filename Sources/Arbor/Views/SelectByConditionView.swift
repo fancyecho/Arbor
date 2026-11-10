@@ -9,7 +9,7 @@ struct SelectByConditionView: View {
 
     var body: some View {
         let tab = workspace.activeTab
-        let matches = tab.visibleItems.filter { condition.matches($0) }
+        let matches = tab.visibleRows.filter { condition.matches($0) }
 
         VStack(alignment: .leading, spacing: 14) {
             Text(L("按条件选择")).font(.headline)
@@ -37,7 +37,7 @@ struct SelectByConditionView: View {
                 Toggle(L("添加到当前选择"), isOn: $condition.addToSelection)
             }
             HStack {
-                Text(L("匹配 \(matches.count) / \(tab.visibleItems.count) 项")).foregroundStyle(.secondary)
+                Text(L("匹配 \(matches.count) / \(tab.visibleRows.count) 项")).foregroundStyle(.secondary)
                 Spacer()
                 Button(L("取消"), role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
                 Button(L("选择")) {

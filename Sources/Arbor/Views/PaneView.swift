@@ -63,10 +63,14 @@ struct TabContentView: View {
                     workspace: workspace, pane: pane, tab: tab,
                     items: items, selection: tab.selection, sort: tab.sort, renamingURL: tab.renamingURL,
                     pendingScrollAnchor: tab.pendingScrollAnchor, showsLocation: tab.isSearchMode, compareMarks: tab.compareMarks, visibleColumns: AppSettings.shared.listColumns, tint: workspace.tint.nsColor, showsInsights: AppSettings.shared.showListInsights, isActive: isActive, focusToken: workspace.focusToken,
-                    plannedWidth: plannedWidth, spaceRevision: SpaceIndex.shared.revision)
+                    plannedWidth: plannedWidth, spaceRevision: SpaceIndex.shared.revision,
+                    groups: tab.displayGroups, showsGroups: tab.showsGroups, showsTree: tab.showsTree,
+                    expandedFolders: tab.expandedFolders, treeRevision: tab.treeRevision,
+                    lastOpenedRevision: LastOpenedIndex.shared.revision)
             case .grid:
                 // While the pane shrinks, icons keep the final arrangement instead of re-wrapping every frame.
-                FileGridView(workspace: workspace, pane: pane, tab: tab, items: items, isActive: isActive)
+                FileGridView(workspace: workspace, pane: pane, tab: tab, items: tab.visibleRows,
+                             groups: tab.displayGroups, showsGroups: tab.showsGroups, isActive: isActive)
                     .frame(width: plannedWidth, alignment: .leading)
                     .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                     .clipped()
@@ -77,7 +81,9 @@ struct TabContentView: View {
                         workspace: workspace, pane: pane, tab: tab,
                         items: items, selection: tab.selection, sort: tab.sort, renamingURL: tab.renamingURL,
                         pendingScrollAnchor: tab.pendingScrollAnchor, showsLocation: true, compareMarks: [:], visibleColumns: AppSettings.shared.listColumns, tint: workspace.tint.nsColor, showsInsights: AppSettings.shared.showListInsights, isActive: isActive,
-                        focusToken: workspace.focusToken, plannedWidth: plannedWidth, spaceRevision: SpaceIndex.shared.revision)
+                        focusToken: workspace.focusToken, plannedWidth: plannedWidth, spaceRevision: SpaceIndex.shared.revision,
+                        groups: tab.displayGroups, showsGroups: tab.showsGroups, showsTree: false,
+                        lastOpenedRevision: LastOpenedIndex.shared.revision)
                 } else {
                     ColumnBrowserView(workspace: workspace, pane: pane, tab: tab, items: items, isActive: isActive)
                 }
@@ -128,7 +134,7 @@ struct StatusBarView: View {
     @State private var freeSpace: Int64?
 
     var body: some View {
-        let visible = tab.visibleItems
+        let visible = tab.visibleRows
         let selected = visible.filter { tab.selection.contains($0.url) }
         HStack(spacing: 6) {
             if selected.isEmpty {

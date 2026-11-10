@@ -33,6 +33,7 @@ final class PaneState: Identifiable {
         let tab = TabState(url: url ?? source.url)
         tab.viewMode = source.viewMode
         tab.sort = source.sort
+        tab.groupBy = source.groupBy
         insert(tab, at: (index(of: activeTabID) ?? tabs.count - 1) + 1, activate: activate)
         return tab
     }

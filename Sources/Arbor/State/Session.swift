@@ -9,6 +9,8 @@ struct TabSnapshot: Codable, Equatable {
     var sortKey: String = SortKey.name.rawValue
     var ascending = true
     var pinned = false
+    /// Optional so sessions saved before groups still decode.
+    var groupBy: String? = nil
 
     var url: URL { URL(fileURLWithPath: path) }
     var exists: Bool { TabState.resolvedDirectory(url) != nil }
@@ -59,7 +61,8 @@ struct SavedWorkspace: Codable, Identifiable, Equatable {
 extension TabState {
     var snapshot: TabSnapshot {
         TabSnapshot(path: url.path, viewMode: viewMode.rawValue, sortKey: sort.key.rawValue,
-                    ascending: sort.ascending, pinned: isPinned)
+                    ascending: sort.ascending, pinned: isPinned,
+                    groupBy: groupBy == .none ? nil : groupBy.rawValue)
     }
 
     convenience init(snapshot: TabSnapshot) {
@@ -68,6 +71,7 @@ extension TabState {
         sort.key = SortKey(rawValue: snapshot.sortKey) ?? .name
         sort.ascending = snapshot.ascending
         isPinned = snapshot.pinned
+        groupBy = snapshot.groupBy.flatMap(GroupBy.init(rawValue:)) ?? .none
     }
 }
 

@@ -129,7 +129,7 @@ extension WorkspaceState {
     func selectionOrNil(_ urls: [URL]?) -> [URL] {
         if let urls { return urls }
         let tab = activeTab
-        return tab.visibleItems.filter { tab.selection.contains($0.url) }.map(\.url)
+        return tab.visibleRows.filter { tab.selection.contains($0.url) }.map(\.url)
     }
 }
 

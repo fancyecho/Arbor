@@ -273,6 +273,27 @@ struct ArborCommands: Commands {
             Button(L("切换到下一个窗格")) { workspace?.focusNextPane() }
                 .shortcut("切换到下一个窗格", KeyboardShortcut("`", modifiers: [.control]))
             Divider()
+            Menu(L("排序方式")) {
+                ForEach(SortKey.allCases.filter { $0 != .location }, id: \.self) { key in
+                    Toggle(key.title, isOn: Binding(get: { workspace?.activeTab.sort.key == key },
+                                                    set: { _ in workspace?.setSort(key) }))
+                }
+                Divider()
+                Toggle(L("升序"), isOn: Binding(get: { workspace?.activeTab.sort.ascending ?? true },
+                                               set: { workspace?.activeTab.sort.ascending = $0 }))
+                Toggle(L("文件夹排在前面"), isOn: Binding(get: { AppSettings.shared.foldersFirst },
+                                                    set: { AppSettings.shared.foldersFirst = $0 }))
+            }
+            Menu(L("分组方式")) {
+                ForEach(GroupBy.allCases, id: \.self) { groupBy in
+                    Toggle(groupBy.title, isOn: Binding(get: { workspace?.activeTab.groupBy == groupBy },
+                                                        set: { _ in workspace?.setGroupBy(groupBy) }))
+                    if groupBy == .none { Divider() }
+                }
+            }
+            Button(workspace?.activeTab.groupBy == GroupBy.none ? L("使用群组") : L("不使用群组")) { workspace?.toggleGroups() }
+                .shortcut("使用群组", KeyboardShortcut("0", modifiers: [.command, .control]))
+            Divider()
             Button(AppSettings.shared.showHidden ? L("隐藏隐藏文件") : L("显示隐藏文件")) { workspace?.toggleHidden() }
                 .shortcut("显示 / 隐藏隐藏文件", KeyboardShortcut(".", modifiers: [.command, .shift]))
             Button(workspace?.showInspector == true ? L("隐藏检查器") : L("显示检查器")) { workspace?.showInspector.toggle() }

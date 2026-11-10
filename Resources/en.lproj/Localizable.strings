@@ -580,3 +580,24 @@
 "编辑" = "Edit";
 "（无法以文本方式读取）" = "(can't be read as text)";
 "编辑“%@”" = "Edit “%@”";
+
+/* Sorting & groups */
+"添加日期" = "Date Added";
+"上次打开日期" = "Date Last Opened";
+"排序方式" = "Sort By";
+"分组方式" = "Group By";
+"升序" = "Ascending";
+"文件夹排在前面" = "Folders on Top";
+"使用群组" = "Use Groups";
+"不使用群组" = "Don't Use Groups";
+"不分组" = "None";
+"无标签" = "No Tags";
+"未知" = "Unknown";
+"昨天" = "Yesterday";
+"前 7 天" = "Previous 7 Days";
+"前 30 天" = "Previous 30 Days";
+"大于 1 GB" = "Larger than 1 GB";
+"100 MB – 1 GB" = "100 MB – 1 GB";
+"1 – 100 MB" = "1 – 100 MB";
+"100 KB – 1 MB" = "100 KB – 1 MB";
+"小于 100 KB" = "Smaller than 100 KB";
