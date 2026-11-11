@@ -1,3 +1,4 @@
+import ArborObjC
 import Foundation
 
 enum SearchScope: String, CaseIterable, Identifiable {
@@ -71,19 +72,27 @@ final class SpotlightSearch: NSObject {
                   onResults: onResults)
     }
 
-    init(predicate: NSPredicate, onResults: @escaping ([URL]) -> Void) {
+    init(predicate: NSPredicate, scopes: [Any] = [NSMetadataQueryLocalComputerScope], onResults: @escaping ([URL]) -> Void) {
         self.onResults = onResults
         super.init()
         query.predicate = predicate
-        query.searchScopes = [NSMetadataQueryLocalComputerScope]
+        query.searchScopes = scopes
         query.sortDescriptors = [NSSortDescriptor(key: NSMetadataItemFSContentChangeDateKey, ascending: false)]
         for name in [NSNotification.Name.NSMetadataQueryDidFinishGathering, .NSMetadataQueryDidUpdate] {
             observers.append(NotificationCenter.default.addObserver(forName: name, object: query, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated { self?.collect() }
             })
         }
-        query.start()
+        // Spotlight throws (an Objective-C exception) for predicates it can't run; turn that into no results.
+        var error: NSError?
+        if !ArborCatchException({ query.start() }, &error) {
+            failure = error
+            DispatchQueue.main.async { [weak self] in self?.onResults([]) }
+        }
     }
+
+    /// Why Spotlight refused the query, if it did.
+    private(set) var failure: Error?
 
     func stop() {
         query.stop()

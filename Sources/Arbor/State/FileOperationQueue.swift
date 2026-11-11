@@ -123,6 +123,15 @@ final class FileOperationQueue {
         tasks.last { $0.destination.isSameFile(as: folder) }
     }
 
+    /// Items being written into `folder` right now, by path, with how far along each is (for the rows).
+    func inFlight(in folder: URL) -> [String: Double] {
+        var result: [String: Double] = [:]
+        for task in tasks where task.state == .running && task.destination.isSameFile(as: folder) {
+            if let target = task.progress.currentTarget { result[target] = task.progress.currentFraction }
+        }
+        return result
+    }
+
     func clearFinished() {
         tasks.removeAll { $0.state != .running }
     }

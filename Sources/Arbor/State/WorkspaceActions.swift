@@ -8,7 +8,7 @@ extension WorkspaceState {
     private func targets(_ urls: [URL]?) -> [URL] {
         if let urls { return urls }
         let tab = activeTab
-        if tab.viewMode == .space { return tab.selectedItems.map(\.url) }
+        if tab.viewMode == .space || tab.viewMode == .timeline { return tab.selectedItems.map(\.url) }
         return tab.visibleRows.filter { tab.selection.contains($0.url) }.map(\.url)
     }
 
@@ -173,6 +173,7 @@ extension WorkspaceState {
         guard !items.isEmpty, let other = otherPane else { return }
         let destinationTab = other.activeTab
         let sourceTab = activeTab
+        FlyAnimation.run(items: items, from: activePaneID, to: other.id, move: move, tint: tint.nsColor)
         let completion: ([URL], Error?) -> Void = { [weak self] results, error in
             self?.report(error)
             destinationTab.reload(selecting: Set(results))
@@ -183,6 +184,13 @@ extension WorkspaceState {
         } else {
             FileOperationQueue.shared.copy(items, to: destinationTab.url, completion: completion)
         }
+    }
+
+    /// Names the selection after what's inside each file, with the user's model.
+    func aiRename(_ urls: [URL]? = nil) {
+        let items = targets(urls)
+        guard !items.isEmpty else { return }
+        aiRenameTargets = Array(items.prefix(40))
     }
 
     func batchRename(_ urls: [URL]? = nil) {

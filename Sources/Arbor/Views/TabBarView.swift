@@ -86,9 +86,19 @@ private struct TabChip: View {
 
     var body: some View {
         HStack(spacing: 5) {
-            Image(nsImage: NSWorkspace.shared.icon(forFile: tab.url.path))
-                .resizable()
-                .frame(width: 14, height: 14)
+            if tab.aiQuery != nil {
+                // The assistant's results: the sparkle in the glow's colors.
+                Image(systemName: "sparkles")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(LinearGradient(colors: AppSettings.shared.aiGlow.colors(dark: true).prefix(4).map { $0 },
+                                                    startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .frame(width: 14, height: 14)
+                    .transition(.scale.combined(with: .opacity))
+            } else {
+                Image(nsImage: NSWorkspace.shared.icon(forFile: tab.url.path))
+                    .resizable()
+                    .frame(width: 14, height: 14)
+            }
             if !tab.isPinned {
                 Text(tab.title)
                     .lineLimit(1)
@@ -136,7 +146,8 @@ private struct TabChip: View {
             workspace.focusToken += 1
         }
         .onHover { hovering = $0 }
-        .help(tab.isPinned ? L("\(tab.title)（已固定）\n\(tab.url.path)") : tab.url.path)
+        .help(tab.aiQuery != nil ? L("AI 结果：\(tab.title)（临时标签页，下次的结果会显示在这里）")
+              : tab.isPinned ? L("\(tab.title)（已固定）\n\(tab.url.path)") : tab.url.path)
         .contextMenu { menu }
         .onDrag {
             TabDrag.tab = tab

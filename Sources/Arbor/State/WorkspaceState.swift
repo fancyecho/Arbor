@@ -26,6 +26,58 @@ final class WorkspaceState {
     @ObservationIgnored var renameAfterAlert: (tab: TabState, url: URL)?
     /// ⌘K command palette.
     var showPalette = false
+    /// ⌘J AI command bar.
+    var showAIBar = false
+    /// The model is working on something: the window's edge glows.
+    var aiThinking = false
+    /// Present the AI rename sheet for these files.
+    var aiRenameTargets: [URL]?
+    /// Sent to the assistant when the bar opens (from the ⌘K palette).
+    var aiPendingRequest: String?
+    /// The assistant's conversation lives as long as the window.
+    @ObservationIgnored private var assistantStorage: AIAgent?
+
+    var assistant: AIAgent {
+        if let assistantStorage { return assistantStorage }
+        let agent = AIAgent(workspace: self)
+        assistantStorage = agent
+        return agent
+    }
+
+    /// Shows assistant results in the pane's temporary tab (opened next to the current one the first time),
+    /// so the folder you were in stays as it was.
+    @discardableResult
+    func showAIResults(_ query: TabState.AIQuery) -> TabState {
+        let pane = activePane
+        let tab: TabState
+        if let existing = pane.tabs.first(where: \.isTemporary) {
+            tab = existing
+        } else {
+            tab = pane.newTab(url: activeTab.url, activate: false)
+            tab.isTemporary = true
+        }
+        withAnimation(.snappy(duration: 0.3)) { pane.activeTabID = tab.id }
+        tab.showAIQuery(query)
+        focusToken += 1
+        return tab
+    }
+
+    /// Closes the assistant's result tabs.
+    func closeAIResults() {
+        for pane in panes {
+            for tab in pane.tabs where tab.isTemporary && tab.aiQuery != nil {
+                if pane.tabs.count > 1 { close(tab, in: pane) } else { tab.showAIQuery(nil); tab.isTemporary = false }
+            }
+        }
+    }
+
+    var hasAIResults: Bool { panes.contains { $0.tabs.contains { $0.isTemporary && $0.aiQuery != nil } } }
+
+    /// Opens the assistant and asks it right away.
+    func ask(_ request: String) {
+        aiPendingRequest = request
+        showAIBar = true
+    }
     var showSelectByCondition = false
     var showSync = false
     var showConnectServer = false

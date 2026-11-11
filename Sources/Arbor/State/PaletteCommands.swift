@@ -2,7 +2,7 @@ import AppKit
 
 /// Something the ⌘K palette can run.
 struct PaletteItem: Identifiable {
-    enum Kind: Int { case path, folder, command, workspace, custom }
+    enum Kind: Int { case ai, path, folder, command, workspace, custom }
 
     let id: String
     let kind: Kind
@@ -33,6 +33,8 @@ enum PaletteCommands {
             cmd(L("撤销"), "arrow.uturn.backward", "⌘Z") { ws.undo() },
             cmd(L("重做"), "arrow.uturn.forward", "⇧⌘Z") { ws.redo() },
             cmd(L("批量重命名"), "character.cursor.ibeam", "⇧⌘R") { ws.batchRename() },
+            cmd(L("用 AI 重命名"), "sparkles", "⌥⇧⌘R") { ws.aiRename() },
+            cmd(L("问 Arbor：用一句话找文件"), "sparkles", "⌘J") { ws.showAIBar = true },
             cmd(L("移到废纸篓"), "trash", "⌘⌫") { ws.moveToTrash() },
             cmd(L("复制所选项目"), "plus.square.on.square", "⌘D") { ws.duplicate() },
             cmd(L("拷贝到另一窗格"), "arrow.right.doc.on.clipboard", "⌥⌘→") { ws.copyToOtherPane() },
@@ -65,6 +67,7 @@ enum PaletteCommands {
             cmd(L("图标视图"), "square.grid.2x2", "⌘2") { ws.setViewMode(.grid) },
             cmd(L("分栏视图"), "rectangle.split.3x1", "⌘3") { ws.setViewMode(.columns) },
             cmd(L("空间视图：分析空间占用"), "chart.pie", "⌘4") { ws.analyzeSpace() },
+            cmd(L("时间线：最近的下载、截图和改动"), "clock.arrow.circlepath", "⌘5") { ws.setViewMode(.timeline) },
             cmd(L("扫描整个磁盘"), "internaldrive") { ws.analyzeSpace(URL(fileURLWithPath: "/")) },
             cmd(L("在终端中打开"), "terminal", "⌥⌘T") { ws.openInTerminal() },
             cmd(L("在\(AppSettings.shared.editorName)中打开"), "chevron.left.forwardslash.chevron.right", "⌥⌘E") { ws.openInEditor() },

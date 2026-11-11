@@ -8,6 +8,7 @@ struct PathBarView: View {
     @State private var isEditing = false
     @State private var draft = ""
     @FocusState private var fieldFocused: Bool
+    @State private var chipWidth: CGFloat = 0
 
     var body: some View {
         HStack(spacing: 0) {
@@ -43,18 +44,26 @@ struct PathBarView: View {
             crumbRow(Array(parts.suffix(1)), hidden: Array(parts.dropLast()), collapseAfterFirst: false)
         }
         .padding(.leading, 6)
-        .padding(.trailing, 34) // keep the last crumb clear of the edit button
+        .padding(.trailing, 34 + (tab.gitStatus == nil ? 0 : chipWidth + 6)) // keep the last crumb clear of the buttons
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .background {
             // Clicking empty space switches to the text field.
             Color.clear.contentShape(Rectangle()).onTapGesture(count: 1, perform: beginEditing)
         }
         .overlay(alignment: .trailing) {
-            Button(action: beginEditing) { Image(systemName: "pencil.line") }
-                .buttonStyle(.borderless)
-                .foregroundStyle(.tertiary)
-                .help(L("编辑路径"))
-                .padding(.trailing, 8)
+            HStack(spacing: 6) {
+                if let status = tab.gitStatus, !tab.isSearchMode {
+                    GitBranchChip(workspace: workspace, tab: tab, status: status)
+                        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { chipWidth = $0 }
+                        .transition(.scale(scale: 0.85).combined(with: .opacity))
+                }
+                Button(action: beginEditing) { Image(systemName: "pencil.line") }
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(.tertiary)
+                    .help(L("编辑路径"))
+            }
+            .padding(.trailing, 8)
+            .animation(.snappy(duration: 0.25), value: tab.gitStatus?.root)
         }
     }
 

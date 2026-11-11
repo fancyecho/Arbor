@@ -30,7 +30,7 @@ enum ContextMenuBuilder {
     /// Entries that can be switched off in Settings › 右键菜单.
     static let customizable = [
         "打开方式", "显示包内容", "在新标签页中打开", "在另一窗格中打开", "添加到个人收藏", "快速查看",
-        "复制", "加入暂存架", "拷贝到另一窗格", "移动到另一窗格", "批量重命名…",
+        "复制", "加入暂存架", "拷贝到另一窗格", "移动到另一窗格", "批量重命名…", "用 AI 重命名…", "问 Arbor…",
         "拷贝路径", "拷贝路径为", "在终端中打开", "在编辑器中打开", "在访达中显示", "显示简介",
         "标签", "工具", "图片", "自定义命令", "新建文件", "导出目录树", "分析空间占用",
     ]
@@ -123,6 +123,11 @@ enum ContextMenuBuilder {
             [
                 MenuEntry(L("重命名"), symbol: "pencil", isEnabled: single != nil) { ws.rename(single?.url) },
                 MenuEntry(L("批量重命名…"), symbol: "character.cursor.ibeam") { ws.batchRename(urls) },
+                MenuEntry(L("用 AI 重命名…"), symbol: "sparkles") { ws.aiRename(urls) },
+                MenuEntry(L("问 Arbor…"), symbol: "sparkle.magnifyingglass") {
+                    ws.activeTab.selection = Set(urls)
+                    ws.showAIBar = true
+                },
                 MenuEntry(L("移到废纸篓"), symbol: "trash") { ws.moveToTrash(urls) },
             ],
             [

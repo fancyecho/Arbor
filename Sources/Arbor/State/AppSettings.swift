@@ -92,6 +92,77 @@ final class AppSettings {
         didSet { defaults.set(showListInsights, forKey: "showListInsights") }
     }
 
+    /// Git badges in lists, the branch in the path bar and diffs in the inspector.
+    var showGitStatus: Bool {
+        didSet {
+            defaults.set(showGitStatus, forKey: "showGitStatus")
+            GitIndex.shared.reset()
+        }
+    }
+
+    /// Which Settings tab is showing (not saved; lets other places open a specific tab).
+    var settingsTab = "general"
+
+    // MARK: AI
+
+    var aiProvider: AIProvider {
+        didSet {
+            defaults.set(aiProvider.rawValue, forKey: "aiProvider")
+            loadAIProviderFields()
+            loadAIKey()
+        }
+    }
+
+    var aiBaseURL: String {
+        didSet { defaults.set(aiBaseURL, forKey: "aiBaseURL.\(aiProvider.rawValue)") }
+    }
+
+    var aiModel: String {
+        didSet { defaults.set(aiModel, forKey: "aiModel.\(aiProvider.rawValue)") }
+    }
+
+    /// Kept in the Keychain, one per provider.
+    var aiAPIKey: String {
+        didSet {
+            guard aiAPIKey != oldValue, !loadingKey, !Snapshot.isActive else { return }
+            let key = aiAPIKey, account = aiProvider.rawValue
+            DispatchQueue.global(qos: .userInitiated).async { AIKeychain.save(key, account: account) }
+        }
+    }
+
+    @ObservationIgnored private var loadingKey = false
+
+    /// Reads the provider's key off the main thread: the Keychain can stop to ask for permission, and the
+    /// app must keep running meanwhile. Snapshots never touch the real Keychain.
+    func loadAIKey() {
+        guard !Snapshot.isActive else { return }
+        let account = aiProvider.rawValue
+        DispatchQueue.global(qos: .userInitiated).async {
+            let stored = AIKeychain.load(account: account)
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.aiProvider.rawValue == account else { return }
+                self.loadingKey = true
+                self.aiAPIKey = stored
+                self.loadingKey = false
+            }
+        }
+    }
+
+    /// How the glow around the window looks while the model works.
+    var aiGlow: AIGlowStyle {
+        didSet { defaults.set(aiGlow.rawValue, forKey: "aiGlow") }
+    }
+
+    var aiConfig: AIConfig {
+        AIConfig(provider: aiProvider, baseURL: aiBaseURL, model: aiModel, apiKey: aiAPIKey)
+    }
+
+    /// Reloads the URL and model saved for the provider just picked.
+    func loadAIProviderFields() {
+        aiBaseURL = defaults.string(forKey: "aiBaseURL.\(aiProvider.rawValue)") ?? aiProvider.defaultBaseURL
+        aiModel = defaults.string(forKey: "aiModel.\(aiProvider.rawValue)") ?? aiProvider.defaultModel
+    }
+
     var showMenuBarIcon: Bool {
         didSet { defaults.set(showMenuBarIcon, forKey: "showMenuBarIcon") }
     }
@@ -141,7 +212,15 @@ final class AppSettings {
         terminalBundleID = defaults.string(forKey: "terminalBundleID") ?? "com.apple.Terminal"
         editorBundleID = defaults.string(forKey: "editorBundleID")
             ?? ExternalApp.installedEditors.first?.bundleID ?? "com.apple.TextEdit"
-        defaults.register(defaults: ["showMenuBarIcon": true, "showListInsights": true, "autoSaveWorkspaces": true])
+        defaults.register(defaults: ["showMenuBarIcon": true, "showListInsights": true, "autoSaveWorkspaces": true,
+                                     "showGitStatus": true])
+        showGitStatus = defaults.bool(forKey: "showGitStatus")
+        let provider = AIProvider(rawValue: defaults.string(forKey: "aiProvider") ?? "") ?? .anthropic
+        aiProvider = provider
+        aiBaseURL = defaults.string(forKey: "aiBaseURL.\(provider.rawValue)") ?? provider.defaultBaseURL
+        aiModel = defaults.string(forKey: "aiModel.\(provider.rawValue)") ?? provider.defaultModel
+        aiAPIKey = ""
+        aiGlow = AIGlowStyle(rawValue: defaults.string(forKey: "aiGlow") ?? "") ?? .rainbow
         autoSaveWorkspaces = defaults.bool(forKey: "autoSaveWorkspaces")
         newWindowPaneCount = min(max(defaults.integer(forKey: "newWindowPaneCount"), 0), 3)
         spaceColoring = SpaceColoring(rawValue: defaults.string(forKey: "spaceColoring") ?? "") ?? .folders
@@ -164,6 +243,7 @@ final class AppSettings {
             ]
         customCommands = defaults.data(forKey: "customCommands")
             .flatMap { try? JSONDecoder().decode([CustomCommand].self, from: $0) } ?? CustomCommand.examples
+        loadAIKey()
     }
 
     var terminalURL: URL {

@@ -25,7 +25,7 @@ struct CommandPalette: View {
                     Image(systemName: isPathQuery ? "folder" : "magnifyingglass")
                         .font(.system(size: 17))
                         .foregroundStyle(.secondary)
-                    TextField(L("输入命令、文件夹名称或路径（支持拼音）"), text: $query)
+                    TextField(L("输入命令、文件夹或路径，或者直接用一句话问 AI"), text: $query)
                         .textFieldStyle(.plain)
                         .font(.system(size: 18))
                         .focused($focused)
@@ -64,6 +64,7 @@ struct CommandPalette: View {
                     hint("⌘↩", L("新标签页"))
                     hint("⌥↩", L("另一窗格"))
                     hint("⇥", L("补全路径"))
+                    hint("?", L("问 AI"))
                     Spacer()
                     hint("esc", L("关闭"))
                 }
@@ -79,6 +80,8 @@ struct CommandPalette: View {
         }
         .onAppear {
             focused = true
+            // Screenshot aid: ARBOR_PALETTE_QUERY starts the palette with that text.
+            if Snapshot.isActive, let text = ProcessInfo.processInfo.environment["ARBOR_PALETTE_QUERY"] { query = text }
             refresh()
         }
         .onChange(of: query) { _, _ in refresh() }
@@ -142,7 +145,29 @@ struct CommandPalette: View {
             }
             items.append(item)
         }
-        return Array(items.sorted { $0.score == $1.score ? $0.kind.rawValue < $1.kind.rawValue : $0.score > $1.score }.prefix(60))
+        var ranked = Array(items.sorted { $0.score == $1.score ? $0.kind.rawValue < $1.kind.rawValue : $0.score > $1.score }.prefix(60))
+        if let ask = askItem(q, best: ranked.first?.score ?? 0) {
+            if ask.score > (ranked.first?.score ?? 0) { ranked.insert(ask, at: 0) } else { ranked.append(ask) }
+        }
+        return ranked
+    }
+
+    /// "问 Arbor": hand the text to the assistant. First when it reads like a sentence (or starts with "?"),
+    /// last otherwise, so commands and folders still win for short queries.
+    private func askItem(_ q: String, best: Double) -> PaletteItem? {
+        var text = q
+        let forced = text.hasPrefix("?") || text.hasPrefix("？")
+        if forced { text = String(text.dropFirst()).trimmingCharacters(in: .whitespaces) }
+        guard !text.isEmpty else { return nil }
+        let cjk = text.unicodeScalars.filter { $0.value > 0x2E7F }.count
+        let words = text.split(separator: " ").count
+        let sentence = cjk >= 5 || words >= 3
+        let score = forced || sentence || best < 0.35 ? 10 : 0.01
+        let ws = workspace
+        return PaletteItem(id: "ai:" + text, kind: .ai, title: L("问 Arbor：\(text)"),
+                           subtitle: L("交给 AI：找文件、整理文件、执行命令"), symbol: "sparkles", shortcut: "⌘J", score: score) {
+            ws.ask(text)
+        }
     }
 
     /// "~/Doc" → subfolders of ~ starting with "Doc"; "~/Documents/" → everything inside.

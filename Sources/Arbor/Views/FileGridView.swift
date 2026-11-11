@@ -286,6 +286,11 @@ private struct GridCell: View {
     @State private var draft = ""
     @FocusState private var fieldFocused: Bool
 
+    private var git: GitMark? {
+        _ = GitIndex.shared.revision
+        return GitIndex.shared.mark(for: item.url, isFolder: item.isDirectory)
+    }
+
     var body: some View {
         VStack(spacing: 4) {
             Group {
@@ -343,8 +348,27 @@ private struct GridCell: View {
                     .offset(x: -8, y: 2)
             }
         }
+        .overlay(alignment: .topLeading) {
+            // Git: a letter for the file's own change, a dot for a folder with changes inside.
+            switch git {
+            case .item(let change) where change != .ignored:
+                Text(change.letter)
+                    .font(.system(size: 9, weight: .heavy, design: .monospaced))
+                    .foregroundStyle(.white)
+                    .frame(width: 15, height: 15)
+                    .background(Circle().fill(Color(nsColor: change.color)))
+                    .overlay(Circle().strokeBorder(.white.opacity(0.7), lineWidth: 1))
+                    .offset(x: 18, y: 4)
+            case .contains(let change):
+                Circle().fill(Color(nsColor: change.color)).frame(width: 8, height: 8)
+                    .overlay(Circle().strokeBorder(.white.opacity(0.7), lineWidth: 1))
+                    .offset(x: 20, y: 6)
+            default:
+                EmptyView()
+            }
+        }
         .frame(width: 108, height: 116, alignment: .top)
-        .opacity(item.isHidden ? 0.55 : 1)
+        .opacity(item.isHidden || git?.change == .ignored ? 0.55 : 1)
         .contentShape(Rectangle())
         .help(item.name)
     }

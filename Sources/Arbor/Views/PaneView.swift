@@ -66,7 +66,8 @@ struct TabContentView: View {
                     plannedWidth: plannedWidth, spaceRevision: SpaceIndex.shared.revision,
                     groups: tab.displayGroups, showsGroups: tab.showsGroups, showsTree: tab.showsTree,
                     expandedFolders: tab.expandedFolders, treeRevision: tab.treeRevision,
-                    lastOpenedRevision: LastOpenedIndex.shared.revision)
+                    lastOpenedRevision: LastOpenedIndex.shared.revision, gitRevision: GitIndex.shared.revision,
+                    transfers: FileOperationQueue.shared.inFlight(in: tab.url))
             case .grid:
                 // While the pane shrinks, icons keep the final arrangement instead of re-wrapping every frame.
                 FileGridView(workspace: workspace, pane: pane, tab: tab, items: tab.visibleRows,
@@ -83,12 +84,15 @@ struct TabContentView: View {
                         pendingScrollAnchor: tab.pendingScrollAnchor, showsLocation: true, compareMarks: [:], visibleColumns: AppSettings.shared.listColumns, tint: workspace.tint.nsColor, showsInsights: AppSettings.shared.showListInsights, isActive: isActive,
                         focusToken: workspace.focusToken, plannedWidth: plannedWidth, spaceRevision: SpaceIndex.shared.revision,
                         groups: tab.displayGroups, showsGroups: tab.showsGroups, showsTree: false,
-                        lastOpenedRevision: LastOpenedIndex.shared.revision)
+                        lastOpenedRevision: LastOpenedIndex.shared.revision, gitRevision: GitIndex.shared.revision,
+                    transfers: FileOperationQueue.shared.inFlight(in: tab.url))
                 } else {
                     ColumnBrowserView(workspace: workspace, pane: pane, tab: tab, items: items, isActive: isActive)
                 }
             case .space:
                 SpaceView(workspace: workspace, pane: pane, tab: tab, isActive: isActive)
+            case .timeline:
+                ActivityTimelineView(workspace: workspace, pane: pane, tab: tab, isActive: isActive)
             }
         }
         .overlay {
@@ -102,7 +106,7 @@ struct TabContentView: View {
                 }
             } else if tab.isLoading || (tab.isSearching && items.isEmpty) {
                 ProgressView().controlSize(.small)
-            } else if items.isEmpty, tab.viewMode != .columns || tab.isSearchMode {
+            } else if items.isEmpty, tab.viewMode != .timeline, tab.viewMode != .columns || tab.isSearchMode {
                 // (The column view shows this inside its own column, not across all of them.)
                 VStack(spacing: 6) {
                     Text(tab.filter.isEmpty ? L("文件夹为空") : L("没有匹配“\(tab.filter)”的项目"))
@@ -145,7 +149,8 @@ struct StatusBarView: View {
                 if bytes > 0 { Text("·  \(Format.bytes(bytes))") }
             }
             if tab.isSearchMode {
-                let search = tab.searchScope == .spotlight ? L("Spotlight 搜索") : L("子文件夹搜索")
+                let search = tab.aiQuery != nil ? L("AI 结果") : tab.tagQuery != nil || tab.searchScope == .spotlight
+                    ? L("Spotlight 搜索") : L("子文件夹搜索")
                 Text("·  " + (tab.isSearching ? L("\(search)中…")
                               : tab.searchTruncated ? L("\(search)（仅显示前 \(RecursiveSearch.resultLimit) 项）") : search))
                     .foregroundStyle(tint)

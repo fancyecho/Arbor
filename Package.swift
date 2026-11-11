@@ -5,8 +5,11 @@ let package = Package(
     name: "Arbor",
     platforms: [.macOS(.v14)],
     targets: [
+        // Catches Objective-C exceptions, which Swift can't (see ArborObjC.h).
+        .target(name: "ArborObjC", path: "Sources/ArborObjC"),
         .executableTarget(
             name: "Arbor",
+            dependencies: ["ArborObjC"],
             path: "Sources/Arbor",
             swiftSettings: [.swiftLanguageMode(.v5)],
             linkerSettings: [
@@ -19,7 +22,7 @@ let package = Package(
         ),
         .testTarget(
             name: "ArborTests",
-            dependencies: ["Arbor"],
+            dependencies: ["Arbor", "ArborObjC"],
             path: "Tests/ArborTests",
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),

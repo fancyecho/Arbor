@@ -129,6 +129,9 @@ struct ArborCommands: Commands {
             Button(L("命令面板…")) { workspace?.showPalette.toggle() }
                 .shortcut("命令面板…", KeyboardShortcut("k"))
                 .disabled(workspace == nil)
+            Button(L("问 Arbor…")) { workspace?.showAIBar.toggle() }
+                .shortcut("问 Arbor…", KeyboardShortcut("j"))
+                .disabled(workspace == nil)
             Divider()
             Button(L("新建标签页")) { workspace?.newTab() }
                 .shortcut("新建标签页", KeyboardShortcut("t"))
@@ -204,6 +207,8 @@ struct ArborCommands: Commands {
                 .disabled(workspace?.hasSelection != true)
             Button(L("批量重命名…")) { workspace?.batchRename() }
                 .shortcut("批量重命名…", KeyboardShortcut("r", modifiers: [.command, .shift]))
+            Button(L("用 AI 重命名…")) { workspace?.aiRename() }
+                .shortcut("用 AI 重命名…", KeyboardShortcut("r", modifiers: [.command, .shift, .option]))
                 .disabled(workspace == nil)
             Button(L("移到废纸篓")) {
                 textOr(#selector(NSResponder.deleteToBeginningOfLine(_:))) { workspace?.moveToTrash() }
@@ -263,6 +268,8 @@ struct ArborCommands: Commands {
                 .shortcut("分栏视图", KeyboardShortcut("3"))
             Button(L("空间视图")) { workspace?.setViewMode(.space) }
                 .shortcut("空间视图", KeyboardShortcut("4"))
+            Button(L("时间线视图")) { workspace?.setViewMode(.timeline) }
+                .shortcut("时间线视图", KeyboardShortcut("5"))
             Divider()
             Button(L("单窗格")) { workspace?.setPaneCount(1) }
                 .shortcut("单窗格", KeyboardShortcut("1", modifiers: [.command, .control]))

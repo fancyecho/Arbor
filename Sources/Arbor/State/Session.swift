@@ -77,7 +77,9 @@ extension TabState {
 
 extension PaneState {
     var snapshot: PaneSnapshot {
-        PaneSnapshot(tabs: tabs.map(\.snapshot), activeTab: tabs.firstIndex { $0.id == activeTabID } ?? 0)
+        // The assistant's result tabs are temporary: they aren't restored.
+        let kept = tabs.filter { !$0.isTemporary }.isEmpty ? tabs : tabs.filter { !$0.isTemporary }
+        return PaneSnapshot(tabs: kept.map(\.snapshot), activeTab: kept.firstIndex { $0.id == activeTabID } ?? 0)
     }
 
     /// Restores the tabs that still exist; falls back to `fallback` if none do.

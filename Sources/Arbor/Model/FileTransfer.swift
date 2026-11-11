@@ -39,6 +39,9 @@ struct TransferProgress: Sendable, Equatable {
     var itemsDone = 0
     var itemsTotal = 0
     var currentName = ""
+    /// The item being written right now (its path at the destination) and how far along it is.
+    var currentTarget: String?
+    var currentFraction: Double = 0
 }
 
 struct TransferResult: Sendable {
@@ -245,9 +248,17 @@ final class TransferEngine: @unchecked Sendable {
     private func copyWithProgress(_ source: URL, to target: URL) throws {
         let baseline = progress.completedBytes
         let expected = Self.byteCount(of: source)
+        progress.currentTarget = target.standardizedFileURL.path
+        progress.currentFraction = 0
+        flush(force: true)
+        defer {
+            progress.currentTarget = nil
+            progress.currentFraction = 0
+        }
         let context = CopyContext(cancelFlag: cancelFlag) { [weak self] copied in
             guard let self else { return }
             self.progress.completedBytes = baseline + copied
+            self.progress.currentFraction = expected > 0 ? min(1, Double(copied) / Double(expected)) : 0
             self.flush(force: false)
         }
         let state = copyfile_state_alloc()

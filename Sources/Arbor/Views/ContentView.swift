@@ -34,6 +34,10 @@ struct WorkspaceWindow: View {
         return min(300, max(WindowLayout.inspector - 10, spare))
     }
 
+    private var aiRenameBinding: Binding<Bool> {
+        Binding(get: { workspace.aiRenameTargets != nil }, set: { if !$0 { workspace.aiRenameTargets = nil } })
+    }
+
     private var minimumWidth: CGFloat {
         WindowLayout.minimumWidth(panes: workspace.visiblePanes.count, sidebar: workspace.showSidebar,
                                   inspector: workspace.showInspector)
@@ -82,6 +86,17 @@ struct WorkspaceWindow: View {
         }
         .overlay {
             if workspace.showPalette { CommandPalette(workspace: workspace) }
+        }
+        .overlay {
+            if workspace.showAIBar {
+                AICommandBar(workspace: workspace)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .overlay { WindowGlowOverlay(active: workspace.aiThinking) }
+        .animation(.snappy(duration: 0.3), value: workspace.showAIBar)
+        .sheet(isPresented: aiRenameBinding) {
+            AIRenameSheet(workspace: workspace, urls: workspace.aiRenameTargets ?? [])
         }
         .sheet(item: $workspace.commandOutput) { CommandOutputSheet(output: $0) }
         .sheet(isPresented: $workspace.showSelectByCondition) { SelectByConditionView(workspace: workspace) }
@@ -136,6 +151,55 @@ struct WorkspaceWindow: View {
                 return
             case "settings":
                 openSettings()
+                return
+            case "agent":
+                // Talks to a local stand-in model: ARBOR_AI_BASE (OpenAI-compatible), ARBOR_ASK the request,
+                // ARBOR_APPROVE to approve the first plan.
+                let env = ProcessInfo.processInfo.environment
+                let settings = AppSettings.shared
+                settings.aiProvider = .openAICompatible
+                settings.aiBaseURL = env["ARBOR_AI_BASE"] ?? "http://localhost:8765/v1"
+                settings.aiModel = "mock"
+                if let path = env["ARBOR_DEMO_DIR"] { workspace.visiblePanes[0].activeTab.navigate(to: URL(fileURLWithPath: path)) }
+                workspace.ask(env["ARBOR_ASK"] ?? "上周下载的 PDF")
+                if env["ARBOR_APPROVE"] != nil {
+                    Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { timer in
+                        MainActor.assumeIsolated {
+                            let agent = workspace.assistant
+                            for case .plan(_, let plan) in agent.entries where agent.planStates[plan.id] == .waiting {
+                                timer.invalidate()
+                                agent.approve(plan)
+                            }
+                        }
+                    }
+                }
+                return
+            case "aiglow":
+                // The command bar with the model "thinking"; ARBOR_GLOW=mono for the monochrome look.
+                if let style = ProcessInfo.processInfo.environment["ARBOR_GLOW"].flatMap(AIGlowStyle.init(rawValue:)) {
+                    AppSettings.shared.aiGlow = style
+                }
+                workspace.showAIBar = true
+                workspace.aiThinking = ProcessInfo.processInfo.environment["ARBOR_IDLE"] == nil
+                return
+            case "timeline", "git", "devcaches":
+                // ARBOR_DEMO_DIR in the timeline, the list with the inspector (a Git repository, with
+                // ARBOR_SELECT selected), or the space view's developer caches.
+                let env = ProcessInfo.processInfo.environment
+                let folder = env["ARBOR_DEMO_DIR"].map { URL(fileURLWithPath: $0) } ?? FileManager.default.homeDirectoryForCurrentUser
+                let tab = workspace.visiblePanes[0].activeTab
+                tab.navigate(to: folder)
+                if let panes = env["ARBOR_PANES"].flatMap(Int.init) { workspace.setPaneCount(panes) }
+                switch note.object as? String {
+                case "timeline": tab.viewMode = .timeline
+                case "devcaches": tab.viewMode = .space
+                default:
+                    tab.viewMode = .list
+                    workspace.showInspector = true
+                    if let select = env["ARBOR_SELECT"] {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { tab.selection = [folder.appendingPathComponent(select)] }
+                    }
+                }
                 return
             case "update", "update-install":
                 // Checks GitHub for real; with ARBOR_FAKE_CURRENT_TAG set lower, the latest release is offered.
@@ -460,7 +524,7 @@ struct WorkspaceWindow: View {
             }
             .pickerStyle(.segmented)
             .labelStyle(.iconOnly)
-            .help(L("视图 (⌘1 / ⌘2 / ⌘3 / ⌘4)"))
+            .help(L("视图 (⌘1 – ⌘5)"))
         }
 
         ToolbarItem(id: "operations", placement: .primaryAction) { OperationsButton() }

@@ -12,13 +12,14 @@ struct SpaceView: View {
 
     @Environment(\.arborTint) private var tint
     @State private var hovered: SpaceNode?
-    @State private var listMode: ListMode = .contents
+    // Screenshot aid: ARBOR_SPACE_LIST=devCaches opens on the developer caches.
+    @State private var listMode: ListMode = ProcessInfo.processInfo.environment["ARBOR_SPACE_LIST"]
+        .flatMap(ListMode.init(rawValue:)) ?? .contents
     @State private var cache = LayoutCache()
 
     enum ListMode: String, CaseIterable, Identifiable {
-        case contents, largest
+        case contents, largest, devCaches
         var id: Self { self }
-        var title: String { self == .contents ? L("内容") : L("最大的文件") }
     }
 
     private var index: SpaceIndex { SpaceIndex.shared }
@@ -99,8 +100,9 @@ struct SpaceView: View {
                         list(scan: scan, node: node, hidden: hidden, layout: layout, palette: palette)
                     }
                 } else {
+                    // The cache list needs the room more than the rings do.
                     chart(scan: scan, node: node, layout: layout, palette: palette)
-                        .frame(height: min(proxy.size.width, proxy.size.height * 0.52))
+                        .frame(height: min(proxy.size.width, proxy.size.height * (listMode == .devCaches ? 0.3 : 0.52)))
                     list(scan: scan, node: node, hidden: hidden, layout: layout, palette: palette)
                 }
             }
@@ -136,7 +138,23 @@ struct SpaceView: View {
             GlassSegmented(selection: $listMode, options: [
                 .init(value: .contents, title: L("内容"), symbol: "list.bullet"),
                 .init(value: .largest, title: L("最大的文件"), symbol: "arrow.down.right.and.arrow.up.left"),
+                .init(value: .devCaches, title: L("开发缓存"), symbol: "hammer"),
             ], compact: true)
+            if listMode == .devCaches {
+                DevCacheList(workspace: workspace, scan: scan, node: node)
+            } else {
+                fileRows(scan: scan, node: node, hidden: hidden, layout: layout, palette: palette)
+            }
+            SpaceFootnotes(scan: scan, node: node, workspace: workspace)
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 12)
+        .padding(.bottom, 8)
+    }
+
+    @ViewBuilder
+    private func fileRows(scan: SpaceScan, node: SpaceNode, hidden: SpaceNode?, layout: SunburstLayout,
+                          palette: SpacePalette) -> some View {
             let rows = rows(for: node, hidden: hidden, revision: scan.revision)
             let largest = rows.first?.size ?? 1
             ScrollView {
@@ -165,11 +183,6 @@ struct SpaceView: View {
                 .padding(.bottom, 8)
                 .slimScrollers(tint)
             }
-            SpaceFootnotes(scan: scan, node: node, workspace: workspace)
-        }
-        .padding(.horizontal, 14)
-        .padding(.top, 12)
-        .padding(.bottom, 8)
     }
 
     private func rows(for node: SpaceNode, hidden: SpaceNode?, revision: Int) -> [SpaceNode] {
@@ -180,6 +193,8 @@ struct SpaceView: View {
             return children
         case .largest:
             return cache.largest(for: node, revision: revision)
+        case .devCaches:
+            return []
         }
     }
 

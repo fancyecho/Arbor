@@ -1,4 +1,5 @@
 import AppKit
+import ArborObjC
 import SwiftUI
 
 /// List view backed by NSOutlineView: native type-select, keyboard navigation, column sorting,
@@ -35,6 +36,10 @@ struct FileListView: NSViewRepresentable {
     var expandedFolders: Set<String> = []
     var treeRevision = 0
     var lastOpenedRevision = 0
+    /// Changes when `git status` of a shown repository changes.
+    var gitRevision = 0
+    /// Rows being written by a copy or move into this folder, by path: how far along each one is.
+    var transfers: [String: Double] = [:]
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -183,6 +188,10 @@ struct FileListView: NSViewRepresentable {
         private var expanded: Set<String> = []
         private var treeRevision = -1
         private var lastOpenedRevision = -1
+        private var gitRevision = -1
+        /// Folder, filter and search state the rows were built for.
+        private var listContext = ""
+        private var transfers: [String: Double] = [:]
         private var marks: [String: CompareStatus] = [:]
         private var tint: NSColor = .controlAccentColor
         private var insights = true
@@ -206,6 +215,7 @@ struct FileListView: NSViewRepresentable {
         func update(with view: FileListView) {
             parent = view
             guard let table else { return }
+            table.paneID = view.pane.id
             isConfigured = true
             isSyncing = true
             defer { isSyncing = false }
@@ -232,8 +242,14 @@ struct FileListView: NSViewRepresentable {
             }
             if tabChanged || items != view.items || groups != view.groups || showsGroups != view.showsGroups
                 || showsTree != view.showsTree || expanded != view.expandedFolders || treeRevision != view.treeRevision
-                || lastOpenedRevision != view.lastOpenedRevision
+                || lastOpenedRevision != view.lastOpenedRevision || gitRevision != view.gitRevision
                 || marks != view.compareMarks || insights != view.showsInsights || spaceRevision != view.spaceRevision {
+                let oldRoots = roots
+                let oldShape = (groups: showsGroups, tree: showsTree, expanded: expanded, revision: treeRevision)
+                // Rows only slide in or out for changes on disk, not for a new folder, filter or search.
+                let context = "\(view.tab.url.path)|\(view.tab.filter)|\(view.showsLocation)|\(AppSettings.shared.showHidden)"
+                let sameContext = context == listContext
+                listContext = context
                 items = view.items
                 groups = view.groups
                 showsGroups = view.showsGroups
@@ -241,6 +257,7 @@ struct FileListView: NSViewRepresentable {
                 expanded = view.expandedFolders
                 treeRevision = view.treeRevision
                 lastOpenedRevision = view.lastOpenedRevision
+                gitRevision = view.gitRevision
                 marks = view.compareMarks
                 insights = view.showsInsights
                 spaceRevision = view.spaceRevision
@@ -249,7 +266,11 @@ struct FileListView: NSViewRepresentable {
                 maxSize = max(1, view.items.compactMap { $0.isNavigable ? rootSizes[$0.name] : $0.size }.max() ?? 1)
                 tabID = view.tab.id
                 rebuild()
-                table.reloadData()
+                let sameShape = oldShape.groups == showsGroups && oldShape.tree == showsTree
+                    && oldShape.expanded == expanded && oldShape.revision == treeRevision
+                if tabChanged || !sameShape || !sameContext || !animateChanges(from: oldRoots) {
+                    table.reloadData()
+                }
                 syncExpansion(roots)
                 if desired.contains(Column.lastOpened.rawValue) {
                     LastOpenedIndex.shared.prefetch(allRowItems().map(\.url), folder: view.showsLocation ? nil : view.tab.url)
@@ -262,6 +283,7 @@ struct FileListView: NSViewRepresentable {
                 applyPendingAnchor(view)
                 if selectionChanged { applySelection(view.selection, scrollToFirst: true) }
             }
+            applyTransfers(view.transfers)
 
             let descriptor = NSSortDescriptor(key: view.sort.key.rawValue, ascending: view.sort.ascending)
             if table.sortDescriptors.first?.key != descriptor.key || table.sortDescriptors.first?.ascending != descriptor.ascending {
@@ -317,6 +339,73 @@ struct FileListView: NSViewRepresentable {
             }
             roots = rows
             nodes = fresh
+        }
+
+        /// Slides rows in and out when files appear or disappear (instead of redrawing the whole list), and
+        /// gives new arrivals a brief glow. Returns false when the change is something else (a re-sort,
+        /// a big batch), which the caller handles with a plain reload.
+        private func animateChanges(from oldRoots: [Node]) -> Bool {
+            guard let table, table.window != nil, !showsGroups, !oldRoots.isEmpty,
+                  !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return false }
+            let old = oldRoots.map(ObjectIdentifier.init)
+            let new = roots.map(ObjectIdentifier.init)
+            let diff = new.difference(from: old)
+            guard !diff.isEmpty else {
+                // Same rows: refresh what they show (sizes, dates) without rebuilding row views.
+                table.reloadData(forRowIndexes: IndexSet(integersIn: 0..<table.numberOfRows),
+                                 columnIndexes: IndexSet(integersIn: 0..<table.numberOfColumns))
+                return true
+            }
+            var removed: [Int] = [], inserted: [Int] = []
+            var removedIDs: Set<ObjectIdentifier> = [], insertedIDs: Set<ObjectIdentifier> = []
+            for change in diff {
+                switch change {
+                case .remove(let offset, let id, _): removed.append(offset); removedIDs.insert(id)
+                case .insert(let offset, let id, _): inserted.append(offset); insertedIDs.insert(id)
+                }
+            }
+            // A moved row (re-sort, rename) or a flood of changes reloads instead.
+            guard removedIDs.isDisjoint(with: insertedIDs), removed.count + inserted.count <= 80 else { return false }
+            // NSOutlineView throws (an Objective-C exception) if these ever disagree with the data; that must not
+            // unwind through Swift, so catch it and fall back to a plain reload.
+            var failure: NSError?
+            let applied = ArborCatchException({
+                table.beginUpdates()
+                for offset in removed.sorted(by: >) {
+                    table.removeItems(at: IndexSet(integer: offset), inParent: nil, withAnimation: [.effectFade, .slideUp])
+                }
+                for offset in inserted.sorted() {
+                    table.insertItems(at: IndexSet(integer: offset), inParent: nil, withAnimation: [.effectFade, .slideDown])
+                }
+                table.endUpdates()
+            }, &failure)
+            guard applied else { return false }
+            let insertedRows = Set(inserted.compactMap { offset -> Int? in
+                let row = table.row(forItem: roots[offset])
+                return row >= 0 ? row : nil
+            })
+            let others = IndexSet((0..<table.numberOfRows).filter { !insertedRows.contains($0) })
+            table.reloadData(forRowIndexes: others, columnIndexes: IndexSet(integersIn: 0..<table.numberOfColumns))
+            // Wait for the slide to place the row views before lighting them up.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak table] in
+                for row in insertedRows {
+                    (table?.rowView(atRow: row, makeIfNecessary: false) as? TintedRowView)?.flash()
+                }
+            }
+            return true
+        }
+
+        /// Shows how far along each row being copied in is.
+        private func applyTransfers(_ wanted: [String: Double]) {
+            guard let table, wanted != transfers else { return }
+            let touched = Set(wanted.keys).union(transfers.keys)
+            transfers = wanted
+            for path in touched {
+                guard let node = nodes["f:" + path] else { continue }
+                let row = table.row(forItem: node)
+                guard row >= 0 else { continue }
+                (table.rowView(atRow: row, makeIfNecessary: false) as? TintedRowView)?.progress = wanted[path]
+            }
         }
 
         /// Opens the folders the tab has expanded (and closes the rest) without reporting it back.
@@ -460,6 +549,7 @@ struct FileListView: NSViewRepresentable {
             let rowView = (outlineView.makeView(withIdentifier: TintedRowView.identifier, owner: nil) as? TintedRowView) ?? TintedRowView()
             rowView.identifier = TintedRowView.identifier
             rowView.tint = tint
+            rowView.progress = (item as? Node)?.item.flatMap { transfers[$0.url.standardizedFileURL.path] }
             return rowView
         }
 
@@ -481,9 +571,11 @@ struct FileListView: NSViewRepresentable {
             let folderSize = item.isNavigable && column == .size && !parent.showsLocation
                 ? sizes(in: parentFolder)[item.name] : nil
             let mark = node.depth == 0 ? marks[item.name] : nil
+            let git = column == .name ? GitIndex.shared.mark(for: item.url, isFolder: item.isDirectory) : nil
             cell.configure(item: item, column: column, mark: mark,
                            insight: insights ? CellInsight(maxSize: maxSize, tint: tint) : nil, folderSize: folderSize,
-                           lastOpened: column == .lastOpened ? LastOpenedIndex.shared.date(for: item.url) : nil)
+                           lastOpened: column == .lastOpened ? LastOpenedIndex.shared.date(for: item.url) : nil,
+                           git: git)
             if column == .name { cell.textField?.delegate = self }
             return cell
         }
@@ -942,6 +1034,8 @@ final class FileScrollView: NSScrollView {
 // MARK: - Table view
 
 final class FileTableView: NSOutlineView {
+    /// The pane showing this list, so animations can find where files leave and land.
+    var paneID: UUID?
     var onFocus: (() -> Void)?
     var onDragLeave: (() -> Void)?
     /// False for group headers: they never join the selection, however it's made (click, ⇧, marquee).
@@ -1139,6 +1233,8 @@ final class FileCellView: NSTableCellView {
     private var badge: NSTextField?
     /// Finder tag dots after the name.
     private var tagDots: NSImageView?
+    /// Git status letter ("M", "U"…) or, on a folder, a dot for changes inside it.
+    private var gitLabel: NSTextField?
     private var mark: CompareStatus?
     private var sizeBar: SizeBarView?
     private var freshDot: FreshDotView?
@@ -1189,12 +1285,22 @@ final class FileCellView: NSTableCellView {
             dots.setContentHuggingPriority(.required, for: .horizontal)
             addSubview(dots)
             tagDots = dots
+            let git = NSTextField(labelWithString: "")
+            git.translatesAutoresizingMaskIntoConstraints = false
+            git.font = .monospacedSystemFont(ofSize: 10.5, weight: .bold)
+            git.alignment = .center
+            git.setContentCompressionResistancePriority(.required, for: .horizontal)
+            git.setContentHuggingPriority(.required, for: .horizontal)
+            addSubview(git)
+            gitLabel = git
             NSLayoutConstraint.activate([
                 badge.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
                 badge.centerYAnchor.constraint(equalTo: centerYAnchor),
+                git.trailingAnchor.constraint(equalTo: badge.leadingAnchor, constant: -4),
+                git.centerYAnchor.constraint(equalTo: centerYAnchor),
                 dots.leadingAnchor.constraint(equalTo: label.trailingAnchor, constant: 4),
                 dots.centerYAnchor.constraint(equalTo: centerYAnchor),
-                dots.trailingAnchor.constraint(lessThanOrEqualTo: badge.leadingAnchor, constant: -6),
+                dots.trailingAnchor.constraint(lessThanOrEqualTo: git.leadingAnchor, constant: -6),
             ])
         } else if column == .size {
             let bar = SizeBarView()
@@ -1248,7 +1354,7 @@ final class FileCellView: NSTableCellView {
 
     /// `folderSize` comes from a space scan (folders have no size of their own on disk).
     func configure(item: FileItem, column: FileListView.Column, mark: CompareStatus? = nil, insight: CellInsight? = nil,
-                   folderSize: Int64? = nil, lastOpened: Date? = nil) {
+                   folderSize: Int64? = nil, lastOpened: Date? = nil, git: GitMark? = nil) {
         if let sizeBar {
             let size = item.isNavigable ? folderSize : item.size
             let fraction = Double(size ?? 0) / Double(insight?.maxSize ?? 1)
@@ -1268,8 +1374,27 @@ final class FileCellView: NSTableCellView {
         switch column {
         case .name:
             label.stringValue = item.name
-            label.textColor = ColorRules.color(for: item.name) ?? .labelColor
+            label.textColor = ColorRules.color(for: item.name)
+                ?? (git?.change == .ignored ? .secondaryLabelColor : .labelColor)
             tagDots?.image = TagDotsImage.make(item.tagNames)
+            if let gitLabel {
+                switch git {
+                case .item(let change) where change != .ignored:
+                    gitLabel.stringValue = change.letter
+                    gitLabel.textColor = change.color
+                    gitLabel.toolTip = "Git: " + change.title
+                    gitLabel.isHidden = false
+                case .contains(let change):
+                    gitLabel.stringValue = "●"
+                    gitLabel.textColor = change.color.withAlphaComponent(0.85)
+                    gitLabel.toolTip = L("Git：里面有改动")
+                    gitLabel.isHidden = false
+                default:
+                    gitLabel.stringValue = ""
+                    gitLabel.toolTip = nil
+                    gitLabel.isHidden = true
+                }
+            }
             label.isEditable = false
             icon?.image = item.icon
         case .modified:
@@ -1298,7 +1423,19 @@ final class FileCellView: NSTableCellView {
         case .tags:
             label.stringValue = item.tagNames.joined(separator: L("、"))
         }
-        alphaValue = item.isHidden ? 0.55 : 1
+        alphaValue = item.isHidden || git?.change == .ignored ? 0.55 : 1
+    }
+}
+
+extension GitChange {
+    var color: NSColor {
+        switch self {
+        case .ignored: .tertiaryLabelColor
+        case .untracked, .added: .systemGreen
+        case .renamed: .systemTeal
+        case .modified: .systemOrange
+        case .deleted, .conflicted: .systemRed
+        }
     }
 }
 
@@ -1352,6 +1489,72 @@ final class TintedRowView: NSTableRowView {
 
     var tint: NSColor = .controlAccentColor {
         didSet { if tint != oldValue { needsDisplay = true } }
+    }
+
+    /// A copy into this row is under way: the row fills up with the workspace color as it goes.
+    var progress: Double? {
+        didSet { if progress != oldValue { needsDisplay = true } }
+    }
+
+    private var glow: CALayer?
+
+    override func drawBackground(in dirtyRect: NSRect) {
+        super.drawBackground(in: dirtyRect)
+        guard let progress else { return }
+        let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        let rect = bounds.insetBy(dx: 2.5, dy: 1.5)
+        let track = NSBezierPath(roundedRect: rect, xRadius: 7, yRadius: 7)
+        tint.withAlphaComponent(dark ? 0.08 : 0.05).setFill()
+        track.fill()
+        NSGraphicsContext.saveGraphicsState()
+        track.addClip()
+        let filled = NSRect(x: rect.minX, y: rect.minY, width: rect.width * max(0.02, min(1, progress)), height: rect.height)
+        tint.withAlphaComponent(dark ? 0.26 : 0.16).setFill()
+        filled.fill()
+        // A bright leading edge, so it reads as moving even when it's slow.
+        tint.withAlphaComponent(0.8).setFill()
+        NSRect(x: filled.maxX - 1.5, y: rect.minY + 4, width: 1.5, height: rect.height - 8).fill()
+        NSGraphicsContext.restoreGraphicsState()
+    }
+
+    /// A short glow in the workspace color for a file that just appeared.
+    func flash() {
+        wantsLayer = true
+        guard let host = layer else { return }
+        glow?.removeFromSuperlayer()
+        let layer = CALayer()
+        layer.frame = bounds.insetBy(dx: 2.5, dy: 1.5)
+        layer.cornerRadius = 7
+        layer.cornerCurve = .continuous
+        layer.backgroundColor = tint.withAlphaComponent(0.28).cgColor
+        layer.borderColor = tint.withAlphaComponent(0.55).cgColor
+        layer.borderWidth = 1
+        layer.opacity = 0
+        host.insertSublayer(layer, at: 0)
+        glow = layer
+        let animation = CAKeyframeAnimation(keyPath: "opacity")
+        animation.values = [0, 1, 1, 0]
+        animation.keyTimes = [0, 0.12, 0.45, 1]
+        animation.duration = 1.6
+        animation.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        animation.isRemovedOnCompletion = true
+        layer.add(animation, forKey: "flash")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.7) { [weak self, weak layer] in
+            layer?.removeFromSuperlayer()
+            if self?.glow === layer { self?.glow = nil }
+        }
+    }
+
+    override func layout() {
+        super.layout()
+        glow?.frame = bounds.insetBy(dx: 2.5, dy: 1.5)
+    }
+
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        glow?.removeFromSuperlayer()
+        glow = nil
+        progress = nil
     }
 
     override func drawSelection(in dirtyRect: NSRect) {

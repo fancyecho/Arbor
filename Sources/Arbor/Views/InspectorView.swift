@@ -61,6 +61,8 @@ private struct SingleItemInfo: View {
                     }
             }
 
+            GitDiffSection(item: item)
+
             VStack(spacing: 4) {
                 Text(item.name)
                     .font(.headline)

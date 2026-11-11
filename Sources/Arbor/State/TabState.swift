@@ -2,7 +2,7 @@ import AppKit
 import Observation
 
 enum ViewMode: String, CaseIterable {
-    case list, grid, columns, space
+    case list, grid, columns, space, timeline
 
     var title: String {
         switch self {
@@ -10,6 +10,7 @@ enum ViewMode: String, CaseIterable {
         case .grid: L("图标")
         case .columns: L("分栏")
         case .space: L("空间")
+        case .timeline: L("时间线")
         }
     }
 
@@ -19,6 +20,7 @@ enum ViewMode: String, CaseIterable {
         case .grid: "square.grid.2x2"
         case .columns: "rectangle.split.3x1"
         case .space: "chart.pie"
+        case .timeline: "clock.arrow.circlepath"
         }
     }
 }
@@ -46,12 +48,25 @@ final class TabState: Identifiable {
     }
     /// Showing every file with this Finder tag (from the sidebar), via Spotlight.
     private(set) var tagQuery: String?
+    /// Showing what the AI command bar searched for.
+    private(set) var aiQuery: AIQuery?
+
+    struct AIQuery {
+        let title: String
+        /// A Spotlight search under `scope`, or (when nil) exactly `urls`.
+        var predicate: NSPredicate?
+        var scope: URL
+        var urls: [URL] = []
+    }
     private(set) var searchResults: [FileItem] = []
     private(set) var isSearching = false
     private(set) var searchTruncated = false
     var viewMode: ViewMode = .list
     /// Pinned tabs show as an icon, stay first in the tab bar and ignore ⌘W.
     var isPinned = false
+    /// Opened by the assistant to show results: reused for the next results, not saved with the session,
+    /// and an ordinary tab again once you browse somewhere from it.
+    var isTemporary = false
 
     /// Set to start inline rename of this item in whichever view is showing the tab.
     var renamingURL: URL?
@@ -68,6 +83,8 @@ final class TabState: Identifiable {
     private(set) var forwardStack: [URL] = []
 
     @ObservationIgnored private var watcher: DirectoryWatcher?
+    /// Follows `git status` of the repository this folder is in (if any).
+    @ObservationIgnored private var gitLease: GitLease?
     @ObservationIgnored private var loadGeneration = 0
     @ObservationIgnored private var visibleCache: (key: VisibleKey, items: [FileItem])?
     @ObservationIgnored private var groupsCache: (key: GroupsKey, groups: [FileGroup])?
@@ -123,6 +140,7 @@ final class TabState: Identifiable {
 
     var title: String {
         if let tagQuery { return L("标签：\(tagQuery)") }
+        if let aiQuery { return aiQuery.title }
         return url.path == "/" ? (volumeName ?? "/") : FileManager.default.displayName(atPath: url.path)
     }
 
@@ -140,7 +158,7 @@ final class TabState: Identifiable {
         var result = isSearchMode ? searchResults : items
         if !key.showHidden { result.removeAll { $0.isHidden } }
         let needle = filter.trimmingCharacters(in: .whitespaces)
-        if !needle.isEmpty, !isSearchMode || tagQuery != nil {
+        if !needle.isEmpty, !isSearchMode || tagQuery != nil || aiQuery != nil {
             result.removeAll { !NameMatcher.matches($0.name, needle) }
         }
         let folderSizes = key.sort.key == .size && !isSearchMode ? SpaceIndex.shared.childSizes(of: url) : nil
@@ -333,8 +351,8 @@ final class TabState: Identifiable {
 
     var selectedItems: [FileItem] {
         let visible = visibleRows.filter { selection.contains($0.url) }
-        // The space view can select files deep inside the folder (its largest-files list, the rings).
-        guard viewMode == .space, visible.count < selection.count else { return visible }
+        // The space and timeline views select files deep inside the folder (largest files, rings, recent files).
+        guard viewMode == .space || viewMode == .timeline, visible.count < selection.count else { return visible }
         let known = Set(visible.map(\.url))
         return visible + selection.subtracting(known).sorted { $0.path < $1.path }.map(FileItem.init(url:))
     }
@@ -349,6 +367,7 @@ final class TabState: Identifiable {
         let target = newURL.standardizedFileURL
         guard !target.isSameFile(as: url) else {
             if tagQuery != nil { showTag(nil) }
+            if aiQuery != nil { showAIQuery(nil) }
             if let select { selection = [select] }
             return
         }
@@ -385,6 +404,8 @@ final class TabState: Identifiable {
         filter = ""
         searchScope = .folder
         tagQuery = nil
+        aiQuery = nil
+        isTemporary = false
         compareMarks = [:]
         renamingURL = nil
         scrollAnchor = nil
@@ -415,18 +436,28 @@ final class TabState: Identifiable {
 
     /// Showing results from the subtree or Spotlight instead of the folder's own items.
     var isSearchMode: Bool {
-        tagQuery != nil || (searchScope != .folder && !filter.trimmingCharacters(in: .whitespaces).isEmpty)
+        tagQuery != nil || aiQuery != nil || (searchScope != .folder && !filter.trimmingCharacters(in: .whitespaces).isEmpty)
+    }
+
+    /// Shows Spotlight results for an AI search in place of the folder (nil goes back to the folder).
+    func showAIQuery(_ query: AIQuery?) {
+        aiQuery = query
+        tagQuery = nil
+        selection = []
+        if viewMode == .space || viewMode == .timeline { viewMode = .list }
+        if query == nil { scheduleSearch() } else { runSearch() }
     }
 
     func showTag(_ tag: String?) {
         tagQuery = tag
+        aiQuery = nil
         if tag == nil { scheduleSearch() } else { runSearch() }
     }
 
     private func scheduleSearch() {
         searchDebounce?.cancel()
-        if tagQuery != nil {
-            // Tag results are filtered locally by name; no need to query Spotlight again.
+        if tagQuery != nil || aiQuery != nil {
+            // Tag and AI results are filtered locally by name; no need to query Spotlight again.
             itemsGeneration += 1
             return
         }
@@ -448,6 +479,33 @@ final class TabState: Identifiable {
         searchTruncated = false
         itemsGeneration += 1
         isSearching = true
+        if let ai = aiQuery, ai.predicate == nil {
+            let urls = ai.urls
+            DispatchQueue.global(qos: .userInitiated).async {
+                let found = urls.filter { FileManager.default.fileExists(atPath: $0.path) }.map(FileItem.init(url:))
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.aiQuery != nil else { return }
+                    self.searchResults = found
+                    self.itemsGeneration += 1
+                    self.isSearching = false
+                }
+            }
+            return
+        }
+        if let ai = aiQuery, let predicate = ai.predicate {
+            spotlight = SpotlightSearch(predicate: predicate, scopes: [ai.scope]) { [weak self] urls in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    let found = urls.map(FileItem.init(url:))
+                    DispatchQueue.main.async {
+                        guard let self, self.aiQuery != nil else { return }
+                        self.searchResults = found
+                        self.itemsGeneration += 1
+                        self.isSearching = false
+                    }
+                }
+            }
+            return
+        }
         if let tag = tagQuery {
             spotlight = SpotlightSearch(predicate: NSPredicate(format: "kMDItemUserTags == %@", tag)) { [weak self] urls in
                 DispatchQueue.global(qos: .userInitiated).async {
@@ -548,6 +606,15 @@ final class TabState: Identifiable {
         watcher = DirectoryWatcher(url: url) { [weak self] in
             self?.reload()
         }
+        if gitLease == nil || GitIndex.shared.repoRoot(for: url) != gitLease?.root {
+            gitLease = GitIndex.shared.track(url)
+        }
+    }
+
+    /// The repository this tab is in, when Git status is shown.
+    var gitStatus: GitRepoStatus? {
+        _ = GitIndex.shared.revision
+        return gitLease.flatMap { GitIndex.shared.status(forRoot: $0.root) }
     }
 
     private static func describe(_ error: Error, url: URL) -> String {

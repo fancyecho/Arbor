@@ -1,14 +1,17 @@
 import SwiftUI
 
 struct SettingsView: View {
+    @Bindable private var settings = AppSettings.shared
+
     var body: some View {
-        TabView {
-            GeneralSettings().tabItem { Label(L("通用"), systemImage: "gearshape") }
-            AppsSettings().tabItem { Label(L("应用"), systemImage: "app.badge") }
-            CommandsSettings().tabItem { Label(L("自定义命令"), systemImage: "command") }
-            ColorRulesSettings().tabItem { Label(L("颜色规则"), systemImage: "paintpalette") }
-            ShortcutsSettings().tabItem { Label(L("快捷键"), systemImage: "keyboard") }
-            MenuSettings().tabItem { Label(L("右键菜单"), systemImage: "contextualmenu.and.cursorarrow") }
+        TabView(selection: $settings.settingsTab) {
+            GeneralSettings().tabItem { Label(L("通用"), systemImage: "gearshape") }.tag("general")
+            AppsSettings().tabItem { Label(L("应用"), systemImage: "app.badge") }.tag("apps")
+            AISettings().tabItem { Label("AI", systemImage: "sparkles") }.tag("ai")
+            CommandsSettings().tabItem { Label(L("自定义命令"), systemImage: "command") }.tag("commands")
+            ColorRulesSettings().tabItem { Label(L("颜色规则"), systemImage: "paintpalette") }.tag("colors")
+            ShortcutsSettings().tabItem { Label(L("快捷键"), systemImage: "keyboard") }.tag("shortcuts")
+            MenuSettings().tabItem { Label(L("右键菜单"), systemImage: "contextualmenu.and.cursorarrow") }.tag("menu")
         }
         .frame(width: 620, height: 460)
     }
@@ -59,6 +62,7 @@ private struct GeneralSettings: View {
                 Toggle(L("显示隐藏文件"), isOn: $settings.showHidden)
                 Toggle(L("文件夹排在文件前面"), isOn: $settings.foldersFirst)
                 Toggle(L("列表中显示大小条和新鲜度光点"), isOn: $settings.showListInsights)
+                Toggle(L("显示 Git 状态（改动标记、分支、差异）"), isOn: $settings.showGitStatus)
             }
             Section {
                 Picker(L("新窗口的窗格"), selection: $settings.newWindowPaneCount) {
