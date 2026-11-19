@@ -60,7 +60,7 @@ struct AIGlowBorder: View {
                     .stroke(AngularGradient(colors: colors, center: .center, angle: .degrees(-base * 0.8)),
                             lineWidth: lineWidth * (8 + 4 * breathe))
                     .blur(radius: 16 * spread)
-                    .opacity(active ? 0.55 : 0.25)
+                    .opacity(active ? 0.55 : 0.18)
                 shape
                     .stroke(AngularGradient(colors: colors, center: .center, angle: .degrees(base + 40)),
                             lineWidth: lineWidth * (3.5 + 2 * breathe))
@@ -80,13 +80,19 @@ struct AIGlowBorder: View {
 struct WindowGlowOverlay: View {
     let active: Bool
 
+    /// The window's own corner: larger with the macOS 26 look, so the light follows the edge into it.
+    private var corner: CGFloat {
+        if #available(macOS 26.0, *) { return 26 }
+        return 12
+    }
+
     var body: some View {
         if active {
-            AIGlowBorder(cornerRadius: 16, lineWidth: 2.5, spread: 1.6, active: true)
+            AIGlowBorder(cornerRadius: corner, lineWidth: 2.5, spread: 1.6, active: true)
                 .padding(1)
                 .mask {
                     // Only the edge glows: the content stays readable.
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    RoundedRectangle(cornerRadius: corner, style: .continuous)
                         .stroke(lineWidth: 70)
                 }
                 .ignoresSafeArea()
