@@ -380,10 +380,11 @@ struct ThumbnailView: View {
     let size: CGFloat
 
     @Environment(\.displayScale) private var scale
+    @Environment(\.arborTintNSColor) private var tint
     @State private var image: NSImage?
 
     var body: some View {
-        Image(nsImage: image ?? item.icon)
+        Image(nsImage: image ?? item.icon(tint: tint))
             .resizable()
             .aspectRatio(contentMode: .fit)
             .shadow(color: .black.opacity(image != nil && !item.isDirectory ? 0.15 : 0), radius: 1.5, y: 1)

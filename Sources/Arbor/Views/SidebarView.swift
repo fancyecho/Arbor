@@ -23,8 +23,6 @@ struct SidebarView: View {
                         LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom).frame(height: 12)
                     }
                 }
-            Rectangle().fill(Color.primary.opacity(0.07)).frame(height: 1).padding(.horizontal, 14)
-            tintPicker
         }
     }
 
@@ -46,7 +44,7 @@ struct SidebarView: View {
                     }
                 }
             } header: {
-                Text(L("个人收藏"))
+                header(L("个人收藏"), "favorites", count: store.favorites.count)
                     .contextMenu {
                         Button(L("恢复默认收藏")) { store.resetFavorites() }
                     }
@@ -64,7 +62,10 @@ struct SidebarView: View {
                 .modifier(SidebarRowStyle(isSelected: false) { workspace.workspaceNameRequest = .save })
                 .help(L("工作区 = 一组存好的窗格、标签页和颜色。比如“写论文”同时打开论文和参考文献，“整理照片”打开相册和导出文件夹，点一下就切过去。"))
             } header: {
-                Text(L("工作区"))
+                HStack {
+                    header(L("工作区"), "workspaces", count: library.saved.count)
+                    TintButton(workspace: workspace)
+                }
             }
 
             let recents = recentPlaces
@@ -72,7 +73,7 @@ struct SidebarView: View {
                 Section(isExpanded: expanded("recents")) {
                     ForEach(recents, id: \.url) { row($0) }
                 } header: {
-                    Text(L("最近"))
+                    header(L("最近"), "recents", count: recents.count)
                         .contextMenu {
                             Button(L("清除最近位置")) { store.clearRecents() }
                         }
@@ -80,7 +81,7 @@ struct SidebarView: View {
             }
 
             if let iCloud = Places.iCloudDrive {
-                Section(isExpanded: expanded("icloud")) { row(iCloud) } header: { Text("iCloud") }
+                Section(isExpanded: expanded("icloud")) { row(iCloud) } header: { header("iCloud", "icloud", count: 1) }
             }
 
             Section(isExpanded: expanded("tags")) {
@@ -99,7 +100,23 @@ struct SidebarView: View {
                     }
                 }
             } header: {
-                Text(L("标签"))
+                HStack(spacing: 8) {
+                    Text(L("标签"))
+                    // Collapsed, the tags stay one click away as a row of dots.
+                    if !store.isExpanded("tags") {
+                        HStack(spacing: 5) {
+                            ForEach(FinderTags.standard, id: \.name) { tag in
+                                Button { workspace.showTag(tag.name) } label: {
+                                    Image(nsImage: FinderTags.dot(tag.color, size: 8))
+                                }
+                                .buttonStyle(.plain)
+                                .help(tag.name)
+                            }
+                        }
+                        .transition(.opacity)
+                    }
+                    Spacer(minLength: 0)
+                }
             }
 
             Section(isExpanded: expanded("locations")) {
@@ -114,21 +131,13 @@ struct SidebarView: View {
                 }
                 row(Places.trash)
             } header: {
-                Text(L("位置"))
+                header(L("位置"), "locations", count: volumes.volumes.count + 1)
                     .contextMenu {
                         Button(L("连接服务器…"), systemImage: "server.rack") { workspace.showConnectServer = true }
                     }
             }
         }
         .listStyle(.sidebar)
-    }
-
-    /// The window's color. With a saved workspace open, it is that workspace's color (saved as you pick).
-    /// The window's color. Tucked away as a small marker (the current color and a label) until the pointer
-    /// comes near; then the swatches slide open. With a saved workspace open, the color is that workspace's
-    /// (saved as you pick).
-    private var tintPicker: some View {
-        TintDrawer(workspace: workspace)
     }
 
     // MARK: Rows
@@ -145,6 +154,13 @@ struct SidebarView: View {
                     if let fullness = place.fullness { CapacityHairline(fullness: fullness).offset(x: 26, y: 5) }
                 }
             Spacer(minLength: 0)
+            if let free = place.free {
+                Text(Format.bytes(free))
+                    .font(.system(size: 11))
+                    .monospacedDigit()
+                    .foregroundStyle(.tertiary)
+                    .help(L("可用空间"))
+            }
             if place.isEjectable {
                 if volumes.ejecting.contains(place.url.standardizedFileURL) {
                     ProgressView().controlSize(.mini).help(L("正在推出…"))
@@ -231,13 +247,32 @@ struct SidebarView: View {
             }
     }
 
+    /// A section title. Collapsed, it says how much is folded away, so it never reads as an empty section.
+    private func header(_ title: String, _ section: String, count: Int) -> some View {
+        HStack(spacing: 6) {
+            Text(title)
+            if !store.isExpanded(section), count > 0 {
+                Text("\(count)")
+                    .font(.system(size: 10, weight: .semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(.tertiary)
+                    .padding(.horizontal, 5)
+                    .frame(height: 15)
+                    .background(Capsule().fill(Color.primary.opacity(0.06)))
+                    .transition(.opacity)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
     private func expanded(_ section: String) -> Binding<Bool> {
-        Binding(get: { store.isExpanded(section) }, set: { store.setExpanded(section, $0) })
+        Binding(get: { store.isExpanded(section) },
+                set: { value in withAnimation(.snappy(duration: 0.25)) { store.setExpanded(section, value) } })
     }
 }
 
-/// Sidebar rows draw their own selection and hover: a soft wash of the workspace color instead of
-/// the system's gray / accent-blue highlight, with the icon taking the color when selected.
+/// Sidebar rows draw their own selection and hover: the selected place is a raised solid chip instead of
+/// the system's gray / accent highlight, and every icon wears the workspace color.
 private struct SidebarRowStyle: ViewModifier {
     let isSelected: Bool
     let action: () -> Void
@@ -250,22 +285,29 @@ private struct SidebarRowStyle: ViewModifier {
         content
             .foregroundStyle(isSelected ? AnyShapeStyle(Color.primary) : AnyShapeStyle(Color.primary.opacity(0.88)))
             .symbolRenderingMode(.monochrome)
-            .labelStyle(SidebarIconStyle(color: isSelected ? tint.onSidebarGlass(colorScheme) : Color.secondary))
+            .labelStyle(SidebarIconStyle(color: isSelected ? tint : tint.opacity(0.8)))
             .fontWeight(isSelected ? .semibold : .regular)
             .contentShape(Rectangle())
             .onTapGesture(perform: action)
             .onHover { hovering = $0 }
             .listRowBackground(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(tint.opacity(isSelected ? 0.16 : (hovering ? 0.07 : 0)))
+                // The selected place is a small solid chip raised off the base; hover is a faint wash.
+                RoundedRectangle(cornerRadius: Metrics.controlRadius, style: .continuous)
+                    .fill(isSelected ? AnyShapeStyle(Surface.raised) : AnyShapeStyle(Color.primary.opacity(hovering ? 0.05 : 0)))
+                    .shadow(color: .black.opacity(isSelected ? (colorScheme == .dark ? 0.3 : 0.08) : 0), radius: 1.5, y: 1)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: Metrics.controlRadius, style: .continuous)
+                            .strokeBorder(Surface.hairline.opacity(isSelected ? 0.8 : 0), lineWidth: 0.5)
+                    }
                     .padding(.horizontal, 10)
+                    .padding(.vertical, 1)
                     .animation(.easeOut(duration: 0.12), value: hovering)
+                    .animation(.easeOut(duration: 0.18), value: isSelected)
             )
     }
 }
 
-/// Colors the row's icon itself: the selected place in the workspace color, the rest secondary.
-/// (A sidebar list's own icon tinting doesn't carry through onto the Liquid Glass sidebar.)
+/// Colors the row's icon itself in the workspace color (fuller when selected).
 private struct SidebarIconStyle: LabelStyle {
     let color: Color
 
@@ -296,77 +338,55 @@ private struct CapacityHairline: View {
     }
 }
 
-private struct TintDrawer: View {
+/// The window's color: a small swatch in the 工作区 header that opens the palette. With a saved workspace
+/// open, the color is that workspace's (saved as you pick).
+private struct TintButton: View {
     let workspace: WorkspaceState
     @State private var open = false
-    @State private var closing: DispatchWorkItem?
 
     private var title: String { workspace.openWorkspace.map { L("工作区“\($0.name)”的颜色") } ?? L("窗口颜色") }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 7) {
-                // The marker: the color in use, always visible.
-                RoundedRectangle(cornerRadius: 3.5, style: .continuous)
-                    .fill(workspace.tint.color.gradient)
-                    .frame(width: 11, height: 11)
-                    .shadow(color: workspace.tint.color.opacity(0.5), radius: 3, y: 1)
-                Text(title)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.up")
-                    .font(.system(size: 8.5, weight: .bold))
-                    .foregroundStyle(.tertiary)
-                    .rotationEffect(.degrees(open ? 180 : 0))
-            }
-            .help(workspace.openWorkspace == nil
-                  ? L("这个窗口还没有打开已存的工作区，颜色只用于这个窗口。存成工作区后颜色会跟着工作区走。")
-                  : L("改变颜色会同时保存到这个工作区；切换到别的工作区时，窗口换成那个工作区的颜色。"))
-            if open {
-                HStack(spacing: 7) {
+        Button { open.toggle() } label: {
+            RoundedRectangle(cornerRadius: 3.5, style: .continuous)
+                .fill(workspace.tint.color)
+                .frame(width: 11, height: 11)
+                .overlay { RoundedRectangle(cornerRadius: 3.5, style: .continuous).strokeBorder(.black.opacity(0.12), lineWidth: 0.5) }
+                .frame(width: 20, height: 18)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(title)
+        .accessibilityLabel(title)
+        .popover(isPresented: $open, arrowEdge: .trailing) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text(title).font(.system(size: 12, weight: .semibold))
+                HStack(spacing: 8) {
                     ForEach(WorkspaceTint.allCases) { option in
                         let selected = workspace.tint == option
                         Button {
                             withAnimation(.easeInOut(duration: 0.35)) { workspace.setTint(option) }
                         } label: {
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .fill(option.color.gradient)
-                                .frame(width: 20, height: 20)
-                                .overlay {
-                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                        .strokeBorder(.white, lineWidth: selected ? 2 : 0)
-                                }
-                                .shadow(color: option.color.opacity(selected ? 0.55 : 0), radius: 4, y: 2)
-                                .scaleEffect(selected ? 1.12 : 1)
+                            Circle()
+                                .fill(option.color)
+                                .frame(width: 22, height: 22)
+                                .overlay { Circle().strokeBorder(.white, lineWidth: selected ? 2 : 0) }
+                                .overlay { Circle().strokeBorder(option.color, lineWidth: selected ? 1 : 0).padding(-2) }
                         }
                         .buttonStyle(.plain)
                         .help(option.title)
                         .accessibilityLabel(L("颜色：\(option.title)"))
                     }
                 }
-                .transition(.move(edge: .bottom).combined(with: .opacity))
+                Text(workspace.openWorkspace == nil
+                     ? L("这个窗口还没有打开已存的工作区，颜色只用于这个窗口。存成工作区后颜色会跟着工作区走。")
+                     : L("改变颜色会同时保存到这个工作区；切换到别的工作区时，窗口换成那个工作区的颜色。"))
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 240, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
             }
+            .padding(14)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, open ? 12 : 10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .contentShape(Rectangle())
-        .onHover { inside in
-            closing?.cancel()
-            if inside {
-                withAnimation(.snappy(duration: 0.25)) { open = true }
-            } else {
-                // A short grace period, so brushing past the edge doesn't snap it shut.
-                let work = DispatchWorkItem { withAnimation(.snappy(duration: 0.25)) { open = false } }
-                closing = work
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: work)
-            }
-        }
-        // Clicking the marker also toggles it (for trackpads where hover is fiddly).
-        .onTapGesture { withAnimation(.snappy(duration: 0.25)) { open.toggle() } }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(title)
     }
 }

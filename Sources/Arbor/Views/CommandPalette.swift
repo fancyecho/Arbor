@@ -252,7 +252,7 @@ private struct PaletteRow: View {
             Image(systemName: item.symbol)
                 .font(.system(size: 14))
                 .frame(width: 22)
-                .foregroundStyle(isSelected ? Color.white : (item.kind == .folder || item.kind == .path ? tint : .secondary))
+                .foregroundStyle(item.kind == .folder || item.kind == .path || isSelected ? tint : .secondary)
             VStack(alignment: .leading, spacing: 1) {
                 Text(item.title)
                     .font(.system(size: 13, weight: .medium))
@@ -260,7 +260,7 @@ private struct PaletteRow: View {
                 if let subtitle = item.subtitle {
                     Text(subtitle)
                         .font(.system(size: 11))
-                        .foregroundStyle(isSelected ? Color.white.opacity(0.8) : .secondary)
+                        .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
@@ -269,13 +269,14 @@ private struct PaletteRow: View {
             if let shortcut = item.shortcut {
                 Text(shortcut)
                     .font(.system(size: 11, design: .rounded))
-                    .foregroundStyle(isSelected ? Color.white.opacity(0.85) : .secondary)
+                    .foregroundStyle(.secondary)
             }
         }
-        .foregroundStyle(isSelected ? Color.white : .primary)
+        .foregroundStyle(.primary)
         .padding(.horizontal, 10)
         .frame(height: item.subtitle == nil ? 32 : 40)
-        .background { RoundedRectangle(cornerRadius: 12, style: .continuous).fill(isSelected ? tint : .clear) }
+        // The chosen row is a soft wash of the workspace color, like a selected file, not a solid bar.
+        .background { RoundedRectangle(cornerRadius: 12, style: .continuous).fill(isSelected ? tint.opacity(0.16) : .clear) }
         .contentShape(Rectangle())
     }
 }

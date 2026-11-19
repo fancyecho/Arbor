@@ -141,7 +141,7 @@ final class TabState: Identifiable {
     var title: String {
         if let tagQuery { return L("标签：\(tagQuery)") }
         if let aiQuery { return aiQuery.title }
-        return url.path == "/" ? (volumeName ?? "/") : FileManager.default.displayName(atPath: url.path)
+        return url.path == "/" ? (volumeName ?? "/") : Places.displayName(for: url)
     }
 
     private var volumeName: String? {

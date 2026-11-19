@@ -1,3 +1,4 @@
+import UniformTypeIdentifiers
 import AppKit
 import ArborObjC
 import SwiftUI
@@ -59,7 +60,7 @@ struct FileListView: NSViewRepresentable {
         table.allowsColumnReordering = true
         table.allowsColumnResizing = true
         table.columnAutoresizingStyle = .noColumnAutoresizing // FileScrollView fits the name column
-        table.headerView = NSTableHeaderView()
+        table.headerView = QuietHeaderView()
         table.indentationPerLevel = 16
         table.indentationMarkerFollowsCell = true
         table.autoresizesOutlineColumn = false // FileScrollView owns the name column's width
@@ -575,7 +576,7 @@ struct FileListView: NSViewRepresentable {
             cell.configure(item: item, column: column, mark: mark,
                            insight: insights ? CellInsight(maxSize: maxSize, tint: tint) : nil, folderSize: folderSize,
                            lastOpened: column == .lastOpened ? LastOpenedIndex.shared.date(for: item.url) : nil,
-                           git: git)
+                           git: git, tint: tint)
             if column == .name { cell.textField?.delegate = self }
             return cell
         }
@@ -877,6 +878,47 @@ struct FileListView: NSViewRepresentable {
 /// intrinsic size, so the table resizing itself (rows, columns, scrollers) never reaches SwiftUI's
 /// layout. That feedback (SwiftUI re-laying out because the table changed, the table changing
 /// because SwiftUI laid out) is what produced the "too many Update Constraints passes" crashes.
+/// Column titles in small secondary type with no bezels or separators, and a chevron on the sorted column.
+/// Clicking, dragging and resizing columns are untouched: only the drawing is replaced.
+final class QuietHeaderView: NSTableHeaderView {
+    override var isOpaque: Bool { false }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let table = tableView else { return }
+        let sorted = table.sortDescriptors.first
+        for (index, column) in table.tableColumns.enumerated() where !column.isHidden {
+            let rect = headerRect(ofColumn: index)
+            guard rect.intersects(dirtyRect) else { continue }
+            let isSorted = sorted?.key != nil && sorted?.key == column.sortDescriptorPrototype?.key
+            let alignment = column.headerCell.alignment
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: 11.5, weight: isSorted ? .semibold : .medium),
+                .foregroundColor: isSorted ? NSColor.labelColor.withAlphaComponent(0.75) : NSColor.secondaryLabelColor,
+            ]
+            let title = NSAttributedString(string: column.headerCell.stringValue, attributes: attributes)
+            let size = title.size()
+            let chevron = isSorted ? NSImage(systemSymbolName: sorted?.ascending == true ? "chevron.up" : "chevron.down",
+                                             accessibilityDescription: nil)?
+                .withSymbolConfiguration(.init(pointSize: 8.5, weight: .bold)
+                    .applying(.init(paletteColors: [.secondaryLabelColor]))) : nil
+            let extra = chevron.map { $0.size.width + 4 } ?? 0
+            let inset: CGFloat = index == 0 ? 10 : 6
+            var x = rect.minX + inset
+            if alignment == .right { x = rect.maxX - 8 - size.width - extra }
+            let y = rect.midY - size.height / 2
+            title.draw(at: NSPoint(x: x, y: y))
+            if let chevron {
+                let c = chevron.size
+                chevron.draw(in: NSRect(x: x + size.width + 4, y: rect.midY - c.height / 2, width: c.width, height: c.height),
+                             from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+            }
+        }
+        // One hairline under the titles, inset like the rows.
+        NSColor.labelColor.withAlphaComponent(0.07).setFill()
+        NSRect(x: bounds.minX + 8, y: isFlipped ? bounds.maxY - 1 : bounds.minY, width: bounds.width - 16, height: 1).fill()
+    }
+}
+
 final class LayoutFirewall: NSView {
     init(content: NSView) {
         super.init(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
@@ -1238,10 +1280,36 @@ final class FileCellView: NSTableCellView {
     private var mark: CompareStatus?
     private var sizeBar: SizeBarView?
     private var freshDot: FreshDotView?
+    /// The file whose Quick Look thumbnail is on its way (rows are reused: a late one for another file is dropped).
+    private var thumbnailURL: URL?
+    /// With the freshness dot switched off, the date starts where the other columns' text does.
+    private var freshDotWidth: NSLayoutConstraint?
+    private var freshDotGap: NSLayoutConstraint?
+    private var thumbnailTask: Task<Void, Never>?
 
     // Keep the badge readable on a highlighted (accent-colored) row.
     override var backgroundStyle: NSView.BackgroundStyle {
         didSet { updateBadgeColor() }
+    }
+
+    /// Pictures, movies and PDFs show what's in them instead of a generic document icon.
+    private func loadThumbnail(for item: FileItem) {
+        thumbnailTask?.cancel()
+        thumbnailURL = nil
+        guard !item.isNavigable, let type = UTType(filenameExtension: item.fileExtension),
+              type.conforms(to: .image) || type.conforms(to: .movie) || type.conforms(to: .pdf) else { return }
+        let url = item.url, modified = item.modified
+        thumbnailURL = url
+        if let cached = ThumbnailCache.shared.cached(url, size: 32, modified: modified) {
+            icon?.image = cached
+            return
+        }
+        let scale = window?.backingScaleFactor ?? 2
+        thumbnailTask = Task { @MainActor [weak self] in
+            guard let image = await ThumbnailCache.shared.thumbnail(for: url, size: 32, modified: modified, scale: scale),
+                  !Task.isCancelled, let self, self.thumbnailURL == url else { return }
+            self.icon?.image = image
+        }
     }
 
     private func updateBadgeColor() {
@@ -1322,12 +1390,16 @@ final class FileCellView: NSTableCellView {
             dot.translatesAutoresizingMaskIntoConstraints = false
             addSubview(dot)
             freshDot = dot
+            let width = dot.widthAnchor.constraint(equalToConstant: 7)
+            let gap = label.leadingAnchor.constraint(equalTo: dot.trailingAnchor, constant: 7)
+            freshDotWidth = width
+            freshDotGap = gap
             NSLayoutConstraint.activate([
                 dot.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
                 dot.centerYAnchor.constraint(equalTo: centerYAnchor),
-                dot.widthAnchor.constraint(equalToConstant: 7),
+                width,
                 dot.heightAnchor.constraint(equalToConstant: 7),
-                label.leadingAnchor.constraint(equalTo: dot.trailingAnchor, constant: 7),
+                gap,
             ])
             label.textColor = .secondaryLabelColor
             label.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize - 1, weight: .regular)
@@ -1354,7 +1426,7 @@ final class FileCellView: NSTableCellView {
 
     /// `folderSize` comes from a space scan (folders have no size of their own on disk).
     func configure(item: FileItem, column: FileListView.Column, mark: CompareStatus? = nil, insight: CellInsight? = nil,
-                   folderSize: Int64? = nil, lastOpened: Date? = nil, git: GitMark? = nil) {
+                   folderSize: Int64? = nil, lastOpened: Date? = nil, git: GitMark? = nil, tint: NSColor? = nil) {
         if let sizeBar {
             let size = item.isNavigable ? folderSize : item.size
             let fraction = Double(size ?? 0) / Double(insight?.maxSize ?? 1)
@@ -1363,6 +1435,8 @@ final class FileCellView: NSTableCellView {
         }
         if let freshDot {
             freshDot.isHidden = insight == nil
+            freshDotWidth?.constant = insight == nil ? 0 : 7
+            freshDotGap?.constant = insight == nil ? 0 : 7
             freshDot.update(age: item.modified.map { Date().timeIntervalSince($0) }, tint: insight?.tint ?? .controlAccentColor)
         }
         if let badge {
@@ -1396,7 +1470,8 @@ final class FileCellView: NSTableCellView {
                 }
             }
             label.isEditable = false
-            icon?.image = item.icon
+            icon?.image = tint.map { item.icon(tint: $0) } ?? item.icon
+            loadThumbnail(for: item)
         case .modified:
             label.stringValue = Format.date(item.modified)
         case .size:

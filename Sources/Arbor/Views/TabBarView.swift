@@ -95,7 +95,7 @@ private struct TabChip: View {
                     .frame(width: 14, height: 14)
                     .transition(.scale.combined(with: .opacity))
             } else {
-                Image(nsImage: NSWorkspace.shared.icon(forFile: tab.url.path))
+                Image(nsImage: FolderIcon.icon(for: tab.url, isDirectory: true, isPackage: false, tint: workspace.tint.nsColor))
                     .resizable()
                     .frame(width: 14, height: 14)
             }
@@ -311,7 +311,7 @@ private final class URLCollector: @unchecked Sendable {
 }
 
 /// Closes a pane when there's more than one: a quiet ×, a soft circle behind it on hover.
-private struct PaneCloseButton: View {
+struct PaneCloseButton: View {
     let action: () -> Void
     @State private var hovering = false
 

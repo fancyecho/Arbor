@@ -92,6 +92,11 @@ final class AppSettings {
         didSet { defaults.set(showListInsights, forKey: "showListInsights") }
     }
 
+    /// Plain folders drawn in the workspace color instead of the system's blue.
+    var tintedFolders: Bool {
+        didSet { defaults.set(tintedFolders, forKey: "tintedFolders") }
+    }
+
     /// Git badges in lists, the branch in the path bar and diffs in the inspector.
     var showGitStatus: Bool {
         didSet {
@@ -212,8 +217,9 @@ final class AppSettings {
         terminalBundleID = defaults.string(forKey: "terminalBundleID") ?? "com.apple.Terminal"
         editorBundleID = defaults.string(forKey: "editorBundleID")
             ?? ExternalApp.installedEditors.first?.bundleID ?? "com.apple.TextEdit"
-        defaults.register(defaults: ["showMenuBarIcon": true, "showListInsights": true, "autoSaveWorkspaces": true,
-                                     "showGitStatus": true])
+        defaults.register(defaults: ["showMenuBarIcon": true, "showListInsights": false, "autoSaveWorkspaces": true,
+                                     "showGitStatus": true, "tintedFolders": true])
+        tintedFolders = defaults.bool(forKey: "tintedFolders")
         showGitStatus = defaults.bool(forKey: "showGitStatus")
         let provider = AIProvider(rawValue: defaults.string(forKey: "aiProvider") ?? "") ?? .anthropic
         aiProvider = provider

@@ -30,7 +30,9 @@ enum FlyAnimation {
         let duration = 0.62
         for (index, start) in starts.enumerated() {
             let url = items[min(index, items.count - 1)]
-            let icon = NSWorkspace.shared.icon(forFile: url.path)
+            let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey])
+            let icon = FolderIcon.icon(for: url, isDirectory: values?.isDirectory == true,
+                                       isPackage: values?.isPackage == true, tint: tint)
             let layer = CALayer()
             layer.contents = icon
             layer.bounds = CGRect(x: 0, y: 0, width: 30, height: 30)

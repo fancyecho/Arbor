@@ -25,6 +25,7 @@ struct WorkspaceWindow: View {
         window
             .tint(workspace.tint.color)
             .environment(\.arborTint, workspace.tint.color)
+            .environment(\.arborTintNSColor, workspace.tint.nsColor)
     }
 
     /// 300pt when there's room; in a narrow window it gives up to 40pt so the panes keep theirs.
@@ -70,7 +71,8 @@ struct WorkspaceWindow: View {
         .background { WindowFrameKeeper(minimumWidth: minimumWidth).frame(width: 0, height: 0) }
         .modifier(TransparentToolbar())
         .navigationTitle(workspace.activeTab.title)
-        .toolbar(id: "arbor.main") {
+        // "v2": the visual refresh trimmed the default toolbar; a new id gives everyone the new defaults.
+        .toolbar(id: "arbor.main.v2") {
             toolbar
             optionalToolbar
             trailingToolbar
@@ -499,22 +501,12 @@ struct WorkspaceWindow: View {
             }
             .controlGroupStyle(.navigation)
         }
-        ToolbarItem(id: "up", placement: .navigation) {
+        ToolbarItem(id: "up", placement: .navigation, showsByDefault: false) {
             Button { workspace.goUp() } label: { Label(L("上层文件夹"), systemImage: "arrow.up") }
                 .disabled(!tab.canGoUp)
                 .help(L("上层文件夹 (⌘↑)"))
         }
 
-        ToolbarItem(id: "panes", placement: .principal) {
-            Picker(L("窗格"), selection: Binding(get: { workspace.paneCount }, set: { workspace.setPaneCount($0) })) {
-                Label(L("单窗格"), systemImage: "rectangle").tag(1)
-                Label(L("双窗格"), systemImage: "rectangle.split.2x1").tag(2)
-                Label(L("三窗格"), systemImage: "rectangle.split.3x1.fill").tag(3)
-            }
-            .pickerStyle(.segmented)
-            .labelStyle(.iconOnly)
-            .help(L("窗格布局 (⌃⌘1 / 2 / 3)"))
-        }
 
         ToolbarItem(id: "view", placement: .principal) {
             Picker(L("视图"), selection: Binding(get: { workspace.activeTab.viewMode }, set: { workspace.setViewMode($0) })) {
@@ -571,13 +563,40 @@ struct WorkspaceWindow: View {
 
     @ToolbarContentBuilder
     private var trailingToolbar: some CustomizableToolbarContent {
-        ToolbarItem(id: "shelf", placement: .primaryAction) {
+        ToolbarItem(id: "shelf", placement: .primaryAction, showsByDefault: false) {
             button(L("暂存架"), StashShelf.shared.items.isEmpty ? "tray" : "tray.full", "⌥⌘S") { StashShelf.shared.toggle() }
         }
 
-        ToolbarItem(id: "actions", placement: .primaryAction) {
-            Menu {
-                Button(L("新建文件夹"), systemImage: "folder.badge.plus") { workspace.newFolder() }
+        ToolbarItem(id: "hidden", placement: .primaryAction, showsByDefault: false) {
+            Toggle(isOn: Binding(get: { AppSettings.shared.showHidden }, set: { AppSettings.shared.showHidden = $0 })) {
+                Label(L("隐藏文件"), systemImage: AppSettings.shared.showHidden ? "eye" : "eye.slash")
+            }
+            .help(L("显示隐藏文件 (⇧⌘.)"))
+        }
+
+        // Layout, new and inspector share one glass capsule, as in the design.
+        ToolbarItem(id: "layout", placement: .primaryAction) {
+            ControlGroup {
+                Menu {
+                    Picker(L("窗格"), selection: Binding(get: { workspace.paneCount }, set: { workspace.setPaneCount($0) })) {
+                        Label(L("单窗格"), systemImage: "rectangle").tag(1)
+                        Label(L("双窗格"), systemImage: "rectangle.split.2x1").tag(2)
+                        Label(L("三窗格"), systemImage: "rectangle.split.3x1").tag(3)
+                    }
+                    .pickerStyle(.inline)
+                } label: {
+                    Label(L("窗格"), systemImage: ["rectangle", "rectangle.split.2x1", "rectangle.split.3x1"][max(0, min(workspace.paneCount, 3) - 1)])
+                }
+                .help(L("窗格布局 (⌃⌘1 / 2 / 3)"))
+                actionsMenu
+                button(L("检查器"), "sidebar.trailing", "⌥⌘I") { workspace.showInspector.toggle() }
+            }
+        }
+    }
+
+    private var actionsMenu: some View {
+        Menu {
+            Button(L("新建文件夹"), systemImage: "folder.badge.plus") { workspace.newFolder() }
                 Menu(L("从模板新建"), systemImage: "doc.badge.plus") {
                     ForEach(Templates.all, id: \.self) { template in
                         Button(template.deletingPathExtension().lastPathComponent) { workspace.newFile(from: template) }
@@ -592,18 +611,6 @@ struct WorkspaceWindow: View {
                 Label(L("新建与操作"), systemImage: "plus")
             }
             .help(L("新建与操作"))
-        }
-
-        ToolbarItem(id: "hidden", placement: .primaryAction) {
-            Toggle(isOn: Binding(get: { AppSettings.shared.showHidden }, set: { AppSettings.shared.showHidden = $0 })) {
-                Label(L("隐藏文件"), systemImage: AppSettings.shared.showHidden ? "eye" : "eye.slash")
-            }
-            .help(L("显示隐藏文件 (⇧⌘.)"))
-        }
-
-        ToolbarItem(id: "inspector", placement: .primaryAction) {
-            button(L("检查器"), "sidebar.trailing", "⌥⌘I") { workspace.showInspector.toggle() }
-        }
     }
 
     private func button(_ title: String, _ symbol: String, _ shortcut: String, action: @escaping () -> Void) -> some View {

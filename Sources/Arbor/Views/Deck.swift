@@ -381,7 +381,7 @@ extension EnvironmentValues {
     }
 }
 
-/// Sidebar, panes and inspector: glass cards floating side by side, laid out frame by frame.
+/// Sidebar on the base, panes and inspector as opaque cards beside it, laid out frame by frame.
 struct DeckView: View {
     let workspace: WorkspaceState
     let inspectorWidth: CGFloat
@@ -390,7 +390,7 @@ struct DeckView: View {
     /// Fractions when the current gutter drag began; widths are always computed from these.
     @State private var dragStart: [CGFloat]?
 
-    private static let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
+    private static let shape = RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous)
 
     private var target: DeckTarget {
         let panes = workspace.visiblePanes
@@ -407,14 +407,12 @@ struct DeckView: View {
                 let geometry = frame.geometry
                 ZStack(alignment: .topLeading) {
                     if geometry.sidebarPresence > 0.001 {
-                        // Navigation floats above the content, so the sidebar is Liquid Glass (macOS 26+).
-                        // Only its contents fade while it slides; glass itself isn't meant to be faded.
+                        // The sidebar is part of the window's base, not a card: it sits straight on the
+                        // opaque background, so the content cards are the only things that float.
                         SidebarView(workspace: workspace)
                             .scrollContentBackground(.hidden)
                             .frame(width: DeckGeometry.sidebarWidth, height: height)
-                            .clipShape(Self.shape)
                             .opacity(Double(geometry.sidebarPresence))
-                            .floatingGlass(in: Self.shape, fallback: Surface.card(active: false))
                             .offset(x: geometry.sidebarX)
                     }
                     ForEach(frame.panes) { paneFrame in
@@ -432,10 +430,7 @@ struct DeckView: View {
                     if geometry.inspectorPresence > 0.001 {
                         InspectorView(workspace: workspace)
                             .frame(width: geometry.inspectorWidth, height: height)
-                            .background(Surface.card(active: true), in: Self.shape)
-                            .overlay { Self.shape.strokeBorder(Surface.hairline) }
-                            .clipShape(Self.shape)
-                            .shadow(color: .black.opacity(0.08), radius: 8, y: 3)
+                            .card(Surface.card(active: true), in: Self.shape)
                             .opacity(Double(geometry.inspectorPresence))
                             .offset(x: geometry.inspectorX)
                     }

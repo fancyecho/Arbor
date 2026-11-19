@@ -4,6 +4,8 @@ import SwiftUI
 struct PathBarView: View {
     let workspace: WorkspaceState
     let tab: TabState
+    /// Under the pane's title: the folders above the current one, small (the title names the current one).
+    var parentsOnly = false
 
     @State private var isEditing = false
     @State private var draft = ""
@@ -25,7 +27,7 @@ struct PathBarView: View {
                 crumbs
             }
         }
-        .frame(height: 30)
+        .frame(height: parentsOnly ? 20 : 30)
         .frame(maxWidth: .infinity, alignment: .leading)
         .onChange(of: tab.url) { _, _ in isEditing = false }
     }
@@ -33,7 +35,12 @@ struct PathBarView: View {
     /// The full path when it fits; otherwise the middle folders collapse into a "…" menu, so the
     /// current folder is always fully visible (like Finder's path bar).
     private var crumbs: some View {
-        let parts = Self.components(of: tab.url)
+        var all = Self.components(of: tab.url)
+        // Above the home folder's title, show where it lives (Macintosh HD › 用户) rather than nothing.
+        if parentsOnly, all.count == 1, all[0].symbol == "house.fill" {
+            all = Self.components(of: tab.url, stopAtHome: false)
+        }
+        let parts = parentsOnly ? Array(all.dropLast()) : all
         return ViewThatFits(in: .horizontal) {
             crumbRow(parts, hidden: [])
             ForEach([3, 2, 1], id: \.self) { keep in
@@ -43,8 +50,8 @@ struct PathBarView: View {
             }
             crumbRow(Array(parts.suffix(1)), hidden: Array(parts.dropLast()), collapseAfterFirst: false)
         }
-        .padding(.leading, 6)
-        .padding(.trailing, 34 + (tab.gitStatus == nil ? 0 : chipWidth + 6)) // keep the last crumb clear of the buttons
+        .padding(.leading, parentsOnly ? -6 : 6)
+        .padding(.trailing, 34 + (tab.gitStatus == nil || parentsOnly ? 0 : chipWidth + 6)) // keep the last crumb clear of the buttons
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .background {
             // Clicking empty space switches to the text field.
@@ -52,12 +59,12 @@ struct PathBarView: View {
         }
         .overlay(alignment: .trailing) {
             HStack(spacing: 6) {
-                if let status = tab.gitStatus, !tab.isSearchMode {
+                if let status = tab.gitStatus, !tab.isSearchMode, !parentsOnly {
                     GitBranchChip(workspace: workspace, tab: tab, status: status)
                         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { chipWidth = $0 }
                         .transition(.scale(scale: 0.85).combined(with: .opacity))
                 }
-                Button(action: beginEditing) { Image(systemName: "pencil.line") }
+                Button(action: beginEditing) { Image(systemName: "pencil.line").font(.system(size: parentsOnly ? 10.5 : 13)) }
                     .buttonStyle(.borderless)
                     .foregroundStyle(.tertiary)
                     .help(L("编辑路径"))
@@ -82,7 +89,7 @@ struct PathBarView: View {
 
     private var separator: some View {
         Image(systemName: "chevron.compact.right")
-            .font(.system(size: 11, weight: .medium))
+            .font(.system(size: parentsOnly ? 9.5 : 11, weight: .medium))
             .foregroundStyle(.tertiary)
     }
 
@@ -105,7 +112,7 @@ struct PathBarView: View {
     }
 
     private func crumb(_ part: Part, isLast: Bool, compact: Bool = false) -> some View {
-        Crumb(part: part, isLast: isLast, compact: compact) {
+        Crumb(part: part, isLast: isLast && !parentsOnly, compact: compact, small: parentsOnly) {
             tab.navigate(to: part.url)
             workspace.focusToken += 1
         }
@@ -142,15 +149,15 @@ struct PathBarView: View {
     }
 
     /// Paths inside the home folder start at 🏠, others at the volume.
-    static func components(of url: URL) -> [Part] {
+    static func components(of url: URL, stopAtHome: Bool = true) -> [Part] {
         let home = FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL.path
         let path = url.standardizedFileURL.path
         var parts: [Part] = []
         var current = URL(fileURLWithPath: path)
         while true {
             let currentPath = current.path
-            if currentPath == home {
-                parts.append(Part(name: NSUserName(), url: current, symbol: "house.fill"))
+            if currentPath == home, stopAtHome {
+                parts.append(Part(name: L("主目录"), url: current, symbol: "house.fill"))
                 break
             }
             if currentPath == "/" {
@@ -162,7 +169,7 @@ struct PathBarView: View {
                 parts.append(Part(name: values.volumeLocalizedName ?? current.lastPathComponent, url: current, symbol: "externaldrive.fill"))
                 break
             }
-            parts.append(Part(name: FileManager.default.displayName(atPath: currentPath), url: current, symbol: nil))
+            parts.append(Part(name: Places.displayName(for: current), url: current, symbol: nil))
             current = current.deletingLastPathComponent()
         }
         return parts.reversed()
@@ -173,6 +180,7 @@ private struct Crumb: View {
     let part: PathBarView.Part
     let isLast: Bool
     var compact = false
+    var small = false
     let action: () -> Void
 
     @State private var hovering = false
@@ -181,17 +189,17 @@ private struct Crumb: View {
         Button(action: action) {
             HStack(spacing: 4) {
                 if let symbol = part.symbol {
-                    Image(systemName: symbol).font(.system(size: 10)).foregroundStyle(.secondary)
+                    Image(systemName: symbol).font(.system(size: small ? 9.5 : 10)).foregroundStyle(.secondary)
                 }
                 if !compact {
                     Text(part.name)
-                        .font(.system(size: 12, weight: isLast ? .semibold : .regular))
+                        .font(.system(size: small ? 11.5 : 12, weight: isLast ? .semibold : .regular))
                         .foregroundStyle(isLast ? .primary : .secondary)
                         .lineLimit(1)
                 }
             }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 3)
+            .padding(.horizontal, small ? 5 : 6)
+            .padding(.vertical, small ? 2 : 3)
             .background(
                 RoundedRectangle(cornerRadius: 5, style: .continuous)
                     .fill(Color.primary.opacity(hovering ? 0.07 : 0)))

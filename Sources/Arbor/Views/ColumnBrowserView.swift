@@ -192,13 +192,14 @@ private struct ColumnRow: View {
     let item: FileItem
     let isRenaming: Bool
     let commit: (String?) -> Void
+    @Environment(\.arborTintNSColor) private var tint
 
     @State private var draft = ""
     @FocusState private var fieldFocused: Bool
 
     var body: some View {
         HStack(spacing: 6) {
-            Image(nsImage: item.icon).resizable().frame(width: 16, height: 16)
+            Image(nsImage: item.icon(tint: tint)).resizable().frame(width: 16, height: 16)
             if isRenaming {
                 TextField("", text: $draft)
                     .focused($fieldFocused)

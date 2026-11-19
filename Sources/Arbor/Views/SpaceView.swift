@@ -528,6 +528,7 @@ private struct SpaceRow: View {
     let onHover: (Bool) -> Void
     let onSelect: () -> Void
     let onOpen: () -> Void
+    @Environment(\.arborTintNSColor) private var tintColor
 
     @Environment(\.arborTint) private var tint
 
@@ -589,7 +590,9 @@ private struct SpaceRow: View {
         case .smallFiles: Image(systemName: "square.stack.3d.down.right").foregroundStyle(.secondary)
         case .hidden: Image(systemName: "lock.shield").foregroundStyle(.secondary)
         case .unreadable: Image(systemName: "lock").foregroundStyle(.secondary)
-        default: Image(nsImage: NSWorkspace.shared.icon(forFile: scan.url(of: node).path)).resizable()
+        default:
+            Image(nsImage: FolderIcon.icon(for: scan.url(of: node), isDirectory: node.kind == .folder,
+                                           isPackage: node.kind == .package, tint: tintColor)).resizable()
         }
     }
 

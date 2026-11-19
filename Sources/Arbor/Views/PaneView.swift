@@ -1,7 +1,7 @@
 import UniformTypeIdentifiers
 import SwiftUI
 
-/// A floating glass card. The pane that receives commands lifts: workspace-colored rim, deeper shadow.
+/// An opaque content card. The pane that receives commands gets a faint ring of the workspace color.
 struct PaneView: View {
     let workspace: WorkspaceState
     let pane: PaneState
@@ -12,34 +12,116 @@ struct PaneView: View {
 
     private var isActive: Bool { workspace.activePaneID == pane.id }
     private var lifted: Bool { isActive && workspace.paneCount > 1 }
-    private static let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
+    private static let shape = RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous)
 
     var body: some View {
         let tab = pane.activeTab
         VStack(spacing: 0) {
-            TabBarView(workspace: workspace, pane: pane, isActive: isActive)
-            PathBarView(workspace: workspace, tab: tab)
-            Rectangle().fill(Color.primary.opacity(0.07)).frame(height: 1).padding(.horizontal, 12)
+            // One tab needs no tab bar: the header names the folder. The strip appears with a second tab.
+            if pane.tabs.count > 1 {
+                TabBarView(workspace: workspace, pane: pane, isActive: isActive)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+            PaneHeader(workspace: workspace, pane: pane, tab: tab, showsTabButtons: pane.tabs.count <= 1, isActive: isActive)
+            Rectangle().fill(Surface.divider).frame(height: 1)
             TabContentView(workspace: workspace, pane: pane, tab: tab, isActive: isActive)
             StatusBarView(tab: tab)
         }
         .frame(width: contentWidth, alignment: .leading)
         .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-        .background { Self.shape.fill(Surface.card(active: isActive || workspace.paneCount == 1)) }
-        .clipShape(Self.shape)
+        .card(Surface.card(active: isActive || workspace.paneCount == 1), in: Self.shape)
         .overlay {
-            // Lit from above, like the glass around it: the rim is brightest along the top edge.
-            if lifted {
-                Self.shape.strokeBorder(
-                    LinearGradient(colors: [tint, tint.opacity(0.55)], startPoint: .top, endPoint: .bottom),
-                    lineWidth: 1.5)
-            } else {
-                Self.shape.strokeBorder(Surface.hairline, lineWidth: 1)
-            }
+            // The pane receiving commands: a faint ring of the workspace color, nothing louder.
+            Self.shape.strokeBorder(tint.opacity(lifted ? 0.4 : 0), lineWidth: 1)
         }
-        .shadow(color: .black.opacity(lifted ? 0.22 : 0.08), radius: lifted ? 22 : 8, y: lifted ? 10 : 3)
         .animation(.easeOut(duration: 0.22), value: lifted)
+        .animation(.snappy(duration: 0.25), value: pane.tabs.count > 1)
         .simultaneousGesture(TapGesture().onEnded { workspace.activate(pane) })
+    }
+}
+
+/// The top of a pane: the folders above in small type, then the folder itself as a title, with its icon
+/// and, in a Git repository, the branch.
+struct PaneHeader: View {
+    let workspace: WorkspaceState
+    let pane: PaneState
+    let tab: TabState
+    /// With a single tab there's no tab bar, so the header carries "+" (and "close pane").
+    let showsTabButtons: Bool
+    let isActive: Bool
+
+    @Environment(\.arborTint) private var tint
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            PathBarView(workspace: workspace, tab: tab, parentsOnly: true)
+            HStack(spacing: 9) {
+                icon
+                // The title wins: in a narrow pane the branch chip gives way before the name truncates.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 9) {
+                        title.fixedSize()
+                        if let status = tab.gitStatus, !tab.isSearchMode {
+                            GitBranchChip(workspace: workspace, tab: tab, status: status)
+                                .fixedSize()
+                                .transition(.scale(scale: 0.85).combined(with: .opacity))
+                        }
+                    }
+                    title
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                if showsTabButtons {
+                    Button {
+                        workspace.activate(pane)
+                        workspace.newTab()
+                    } label: {
+                        Image(systemName: "plus").font(.system(size: 11, weight: .semibold))
+                            .frame(width: 20, height: 20)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(.secondary)
+                    .help(L("新建标签页 (⌘T)"))
+                    if workspace.paneCount > 1 {
+                        PaneCloseButton { workspace.closePane(pane) }
+                    }
+                }
+            }
+            .frame(height: 28)
+            .animation(.snappy(duration: 0.25), value: tab.gitStatus?.root)
+        }
+        .padding(.leading, 18)
+        .padding(.trailing, 12)
+        .padding(.top, showsTabButtons ? 10 : 2)
+        .padding(.bottom, 10)
+    }
+
+    private var title: some View {
+        Text(tab.title)
+            .font(TypeScale.title)
+            .tracking(-0.2)
+            .foregroundStyle(isActive || workspace.paneCount == 1 ? .primary : .secondary)
+            .lineLimit(1)
+            .truncationMode(.middle)
+            .contentTransition(.opacity)
+            .animation(.easeOut(duration: 0.2), value: tab.title)
+    }
+
+    @ViewBuilder
+    private var icon: some View {
+        if tab.aiQuery != nil {
+            Image(systemName: "sparkles").font(.system(size: 17, weight: .semibold)).foregroundStyle(tint)
+                .frame(width: 24, height: 24)
+        } else if tab.tagQuery != nil || tab.isSearchMode {
+            Image(systemName: tab.tagQuery != nil ? "tag" : "magnifyingglass")
+                .font(.system(size: 16, weight: .semibold)).foregroundStyle(tint)
+                .frame(width: 24, height: 24)
+        } else {
+            Image(nsImage: FolderIcon.icon(for: tab.url, isDirectory: true, isPackage: false, tint: workspace.tint.nsColor))
+                .resizable()
+                .interpolation(.high)
+                .frame(width: 24, height: 24)
+        }
     }
 }
 
@@ -50,8 +132,11 @@ struct TabContentView: View {
     let tab: TabState
     let isActive: Bool
 
-    /// Entering a folder fades its contents in and lets them settle a few points, instead of a hard swap.
+    /// Entering a folder fades its contents in and slides them a few points, instead of a hard swap:
+    /// from the right when going deeper, from the left when going back up.
     @State private var entrance: CGFloat = 1
+    @State private var direction: CGFloat = 1
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.plannedPaneWidth) private var plannedWidth
 
     var body: some View {
@@ -121,11 +206,21 @@ struct TabContentView: View {
                 .foregroundStyle(.tertiary)
             }
         }
-        .opacity(0.4 + 0.6 * entrance)
-        .offset(y: (1 - entrance) * 6)
-        .onChange(of: tab.url) { _, _ in
+        .opacity(0.35 + 0.65 * entrance)
+        .offset(x: reduceMotion ? 0 : (1 - entrance) * 18 * direction)
+        // Switching views (list → icons…) settles in place instead of sliding.
+        .scaleEffect(direction == 0 && !reduceMotion ? 0.985 + 0.015 * entrance : 1)
+        .onChange(of: tab.viewMode) { _, _ in
+            direction = 0
             entrance = 0
-            withAnimation(.easeOut(duration: 0.24)) { entrance = 1 }
+            withAnimation(.spring(duration: 0.3, bounce: 0)) { entrance = 1 }
+        }
+        .onChange(of: tab.url) { old, new in
+            let oldPath = old.standardizedFileURL.path, newPath = new.standardizedFileURL.path
+            let goingUp = oldPath.hasPrefix(newPath == "/" ? "/" : newPath + "/")
+            direction = goingUp ? -1 : 1
+            entrance = 0
+            withAnimation(.spring(duration: 0.32, bounce: 0)) { entrance = 1 }
         }
     }
 }
@@ -143,8 +238,10 @@ struct StatusBarView: View {
         HStack(spacing: 6) {
             if selected.isEmpty {
                 Text(L("\(visible.count) 项"))
+                    .contentTransition(.numericText())
             } else {
                 Text(L("已选 \(selected.count) / \(visible.count) 项")).foregroundStyle(tint)
+                    .contentTransition(.numericText())
                 let bytes = selected.compactMap(\.size).reduce(0, +)
                 if bytes > 0 { Text("·  \(Format.bytes(bytes))") }
             }
@@ -172,8 +269,12 @@ struct StatusBarView: View {
         .font(.system(size: 11))
         .foregroundStyle(.secondary)
         .monospacedDigit()
-        .padding(.horizontal, 14)
-        .frame(height: 26)
+        .animation(.snappy(duration: 0.2), value: selected.count)
+        .animation(.snappy(duration: 0.2), value: visible.count)
+        .padding(.leading, 18)
+        .padding(.trailing, Metrics.l)
+        .frame(height: 28)
+        .overlay(alignment: .top) { Rectangle().fill(Surface.divider).frame(height: 1) }
         .task(id: tab.url) {
             let values = try? tab.url.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
             freeSpace = values?.volumeAvailableCapacityForImportantUsage

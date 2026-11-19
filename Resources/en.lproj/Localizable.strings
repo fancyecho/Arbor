@@ -793,3 +793,5 @@
 "看看是哪些文件" = "See which files";
 "继续说，或者问点别的…" = "Follow up, or ask something else…";
 "AI 结果：%@（临时标签页，下次的结果会显示在这里）" = "AI results: %@ (a temporary tab; the next results show here too)";
+"文件夹使用工作区颜色" = "Folders take the workspace color";
+"用户" = "Users";

@@ -57,6 +57,11 @@ struct FileItem: Identifiable, Hashable {
 
     var icon: NSImage { NSWorkspace.shared.icon(forFile: url.path) }
 
+    /// The icon with plain folders drawn in the workspace color.
+    @MainActor func icon(tint: NSColor) -> NSImage {
+        FolderIcon.icon(for: url, isDirectory: isDirectory, isPackage: isPackage, tint: tint)
+    }
+
     static func == (lhs: FileItem, rhs: FileItem) -> Bool {
         lhs.url == rhs.url && lhs.modified == rhs.modified && lhs.size == rhs.size && lhs.name == rhs.name
     }
@@ -156,18 +161,48 @@ enum Format {
         return f
     }()
 
+    /// The interface's language, not the system's: "11月3日" in Chinese even on an English Mac.
+    private static var interfaceLocale: Locale {
+        Locale(identifier: Bundle.main.preferredLocalizations.first ?? Locale.current.identifier)
+    }
+
+    /// This year: day and time without the year ("11月3日 06:23").
+    private static let thisYearFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = interfaceLocale
+        f.setLocalizedDateFormatFromTemplate("MMMdHHmm")
+        return f
+    }()
+
+    /// Earlier years: the date alone ("2025/6/15").
+    private static let olderFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy/M/d"
+        return f
+    }()
+
     private static let clockFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "HH:mm"
         return f
     }()
 
-    /// "今天 14:02" / "昨天 09:10" / "2026/10/03 18:22" — compact so the column stays narrow.
-    static func date(_ date: Date?) -> String {
+    /// "今天 14:02" / "昨天 09:10" / "11月3日 06:23" / "2025/6/15": the nearer, the more detail, and
+    /// short enough that the column stays narrow.
+    static func date(_ date: Date?, now: Date = Date()) -> String {
         guard let date else { return "--" }
         let cal = Calendar.current
         if cal.isDateInToday(date) { return L("今天 ") + clockFormatter.string(from: date) }
         if cal.isDateInYesterday(date) { return L("昨天 ") + clockFormatter.string(from: date) }
+        if cal.component(.year, from: date) == cal.component(.year, from: now), date <= now {
+            return thisYearFormatter.string(from: date)
+        }
+        return olderFormatter.string(from: date)
+    }
+
+    /// The full date and time, for the inspector.
+    static func fullDate(_ date: Date?) -> String {
+        guard let date else { return "--" }
         return dateFormatter.string(from: date)
     }
 }

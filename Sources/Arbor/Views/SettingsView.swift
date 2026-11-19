@@ -61,6 +61,7 @@ private struct GeneralSettings: View {
             Section(L("浏览")) {
                 Toggle(L("显示隐藏文件"), isOn: $settings.showHidden)
                 Toggle(L("文件夹排在文件前面"), isOn: $settings.foldersFirst)
+                Toggle(L("文件夹使用工作区颜色"), isOn: $settings.tintedFolders)
                 Toggle(L("列表中显示大小条和新鲜度光点"), isOn: $settings.showListInsights)
                 Toggle(L("显示 Git 状态（改动标记、分支、差异）"), isOn: $settings.showGitStatus)
             }

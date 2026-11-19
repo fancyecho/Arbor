@@ -16,8 +16,11 @@ struct InspectorView: View {
                 } else {
                     SingleItemInfo(item: selected.first ?? FileItem(url: tab.url))
                         .id(selected.first?.url ?? tab.url)
+                        .transition(.opacity)
                 }
             }
+            .animation(.easeOut(duration: 0.18), value: selected.first?.url ?? tab.url)
+            .animation(.easeOut(duration: 0.18), value: selected.count > 1)
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .top)
             .slimScrollers(tint)
@@ -42,18 +45,23 @@ private struct SingleItemInfo: View {
             if TextFile.isText(item) {
                 TextPreview(item: item)
             } else {
+                // The preview is the inspector's main subject: a large well at the top.
                 ThumbnailView(item: item, size: 256)
-                    .frame(maxWidth: 220, maxHeight: 200)
-                    .frame(height: 200)
+                    .frame(maxWidth: 220, maxHeight: 190)
+                    .frame(height: 190)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
+                    .padding(.vertical, Metrics.l)
                     .background {
-                        if let mood {
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .fill(RadialGradient(colors: [mood.opacity(0.45), mood.opacity(0.12), mood.opacity(0)],
-                                                     center: .center, startRadius: 10, endRadius: 190))
-                                .transition(.opacity)
-                        }
+                        RoundedRectangle(cornerRadius: Metrics.wellRadius, style: .continuous)
+                            .fill(Surface.chip)
+                            .overlay {
+                                if let mood {
+                                    RoundedRectangle(cornerRadius: Metrics.wellRadius, style: .continuous)
+                                        .fill(RadialGradient(colors: [mood.opacity(0.45), mood.opacity(0.12), mood.opacity(0)],
+                                                             center: .center, startRadius: 10, endRadius: 190))
+                                        .transition(.opacity)
+                                }
+                            }
                     }
                     .animation(.easeInOut(duration: 0.4), value: mood)
                     .task(id: item.url) {
@@ -63,19 +71,18 @@ private struct SingleItemInfo: View {
 
             GitDiffSection(item: item)
 
-            VStack(spacing: 4) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(item.name)
-                    .font(.headline)
-                    .multilineTextAlignment(.center)
+                    .font(TypeScale.emphasis)
                     .textSelection(.enabled)
                 Text(item.localizedKind)
-                    .font(.caption)
+                    .font(TypeScale.secondary)
                     .foregroundStyle(.secondary)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, Metrics.xs)
 
-            Divider()
-
-            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
+            Grid(alignment: .leading, horizontalSpacing: Metrics.m, verticalSpacing: 7) {
                 row(L("大小")) {
                     if item.isNavigable {
                         if let folderSize {
@@ -90,8 +97,8 @@ private struct SingleItemInfo: View {
                         Text(Format.bytes(item.size))
                     }
                 }
-                row(L("创建时间")) { Text(Format.date(item.created)) }
-                row(L("修改时间")) { Text(Format.date(item.modified)) }
+                row(L("创建时间")) { Text(Format.fullDate(item.created)) }
+                row(L("修改时间")) { Text(Format.fullDate(item.modified)) }
                 if !item.tagNames.isEmpty {
                     row(L("标签")) { Text(item.tagNames.joined(separator: L("、"))) }
                 }
@@ -101,7 +108,8 @@ private struct SingleItemInfo: View {
                         .lineLimit(4)
                 }
             }
-            .font(.system(size: 12))
+            .font(TypeScale.secondary)
+            .padding(.horizontal, Metrics.xs)
 
             HStack(spacing: 8) {
                 Button(L("拷贝路径"), systemImage: "link") { FileOperations.copyPaths([item.url]) }
@@ -129,7 +137,7 @@ private struct SingleItemInfo: View {
 
     private func row<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
         GridRow(alignment: .firstTextBaseline) {
-            Text(title).foregroundStyle(.secondary).gridColumnAlignment(.trailing)
+            Text(title).foregroundStyle(.secondary).gridColumnAlignment(.leading)
             content().frame(maxWidth: .infinity, alignment: .leading)
         }
     }
@@ -137,6 +145,7 @@ private struct SingleItemInfo: View {
 
 private struct MultiSelectionInfo: View {
     let items: [FileItem]
+    @Environment(\.arborTintNSColor) private var tintColor
 
     @State private var total: Int64?
 
@@ -144,7 +153,7 @@ private struct MultiSelectionInfo: View {
         VStack(spacing: 16) {
             ZStack {
                 ForEach(Array(items.prefix(4).enumerated().reversed()), id: \.offset) { index, item in
-                    Image(nsImage: item.icon)
+                    Image(nsImage: item.icon(tint: tintColor))
                         .resizable()
                         .frame(width: 96, height: 96)
                         .rotationEffect(.degrees(Double(index) * 6 - 6))
@@ -153,7 +162,7 @@ private struct MultiSelectionInfo: View {
             }
             .frame(height: 160)
 
-            Text(L("\(items.count) 个项目")).font(.headline)
+            Text(L("\(items.count) 个项目")).font(TypeScale.emphasis)
             let folders = items.filter(\.isNavigable).count
             Text(L("\(items.count - folders) 个文件，\(folders) 个文件夹"))
                 .font(.caption)

@@ -14,6 +14,11 @@ BIN="$(swift build -c "$CONFIG" --show-bin-path)/Arbor"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/Arbor"
+# SwiftPM records the deployment target (14.0) as the SDK the binary was built with. AppKit uses that
+# number to decide which look an app gets, so macOS 26+ drew Arbor in its compatibility mode: flat
+# traffic lights and no Liquid Glass on toolbar buttons. Record the SDK that actually built it.
+SDK_VERSION="$(xcrun --sdk macosx --show-sdk-version)"
+xcrun vtool -set-build-version macos 14.0 "$SDK_VERSION" -replace -output "$APP/Contents/MacOS/Arbor" "$APP/Contents/MacOS/Arbor"
 cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
 # Icon: with Xcode, compile the Icon Composer document into Assets.car, which macOS 26+ shows as Liquid
 # Glass (with the dark, clear and tinted looks). Earlier systems use AppIcon.icns from scripts/make-icon.swift

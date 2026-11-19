@@ -9,6 +9,8 @@ struct Place: Hashable {
     var isEjectable = false
     /// Volumes: how full they are (0…1), for the sidebar's capacity bar.
     var fullness: Double?
+    /// Volumes: bytes still free, shown beside the name.
+    var free: Int64?
 }
 
 enum Places {
@@ -43,6 +45,7 @@ enum Places {
     static func displayName(for url: URL) -> String {
         let path = url.standardizedFileURL.path
         if let known = favorites.first(where: { $0.url.standardizedFileURL.path == path }) { return known.name }
+        if path == "/Users" { return L("用户") }
         return FileManager.default.displayName(atPath: path)
     }
 
@@ -89,13 +92,15 @@ final class VolumeList {
             let isInternal = values?.volumeIsInternal ?? true
             let symbol = isNetwork ? "server.rack" : url.path == "/" ? "internaldrive" : (ejectable ? "externaldrive" : (isInternal ? "internaldrive" : "externaldrive.connected.to.line.below"))
             var fullness: Double?
+            var freeBytes: Int64?
             // Read-only volumes (disk images, installers) report no free space; a "full" bar would mislead.
             if values?.volumeIsReadOnly != true,
                let total = values?.volumeTotalCapacity, total > 0, let free = values?.volumeAvailableCapacityForImportantUsage {
                 fullness = min(max(1 - Double(free) / Double(total), 0), 1)
+                freeBytes = free
             }
             return Place(name: values?.volumeLocalizedName ?? url.lastPathComponent, url: url, symbol: symbol,
-                         isEjectable: ejectable, fullness: fullness)
+                         isEjectable: ejectable, fullness: fullness, free: freeBytes)
         }
     }
 
