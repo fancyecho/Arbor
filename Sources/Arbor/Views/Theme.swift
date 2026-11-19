@@ -1,4 +1,5 @@
 import AppKit
+import UniformTypeIdentifiers
 import SwiftUI
 
 /// Each workspace has its own color: the glass, selections and highlights all take it on,
@@ -34,11 +35,17 @@ enum WorkspaceTint: String, Codable, CaseIterable, Identifiable {
         }
     }
 
-    var nsColor: NSColor {
-        let (light, dark) = values
-        return NSColor(name: nil) { appearance in
-            NSColor(hex: appearance.isDark ? dark : light)
-        }
+    /// One shared color object per tint (lists ask for it for every row they draw).
+    var nsColor: NSColor { Self.colors[self]! }
+
+    private static let colors: [WorkspaceTint: NSColor] = Dictionary(uniqueKeysWithValues: allCases.map { tint in
+        let (light, dark) = tint.values
+        return (tint, NSColor(name: nil) { appearance in NSColor(hex: appearance.isDark ? dark : light) })
+    })
+
+    /// The tint whose shared color object `color` is, if any.
+    static func matching(_ color: NSColor) -> WorkspaceTint? {
+        allCases.first { colors[$0] === color }
     }
 
     var color: Color { Color(nsColor: nsColor) }
@@ -205,9 +212,17 @@ enum FolderIcon {
     private static var customIcons: [String: Bool] = [:]
 
     static func image(tint: NSColor, glyph: String? = nil) -> NSImage {
-        let (light, dark) = (tint.resolved(dark: false), tint.resolved(dark: true))
-        let key = "\(light.hexString)-\(dark.hexString)-\(glyph ?? "")"
+        // The workspace colors are shared objects, so their key is just the name: no color conversion
+        // on the way to a cached image (this runs for every folder row drawn).
+        let colorKey: String
+        if let known = WorkspaceTint.matching(tint) {
+            colorKey = known.rawValue
+        } else {
+            colorKey = "\(tint.resolved(dark: false).hexString)-\(tint.resolved(dark: true).hexString)"
+        }
+        let key = colorKey + "|" + (glyph ?? "")
         if let image = images[key] { return image }
+        let (light, dark) = (tint.resolved(dark: false), tint.resolved(dark: true))
         let image = NSImage(size: NSSize(width: 18, height: 18), flipped: true) { rect in
             let scale = rect.width / 18
             func rounded(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat, _ r: CGFloat) -> NSBezierPath {
@@ -274,8 +289,22 @@ enum FolderIcon {
 
     /// The icon to show for an item: Arbor's folder (with a glyph for special folders), or the system's icon.
     static func icon(for url: URL, isDirectory: Bool, isPackage: Bool, tint: NSColor) -> NSImage {
+        if !isDirectory, !isPackage { return fileIcon(for: url) }
         guard tints(url, isDirectory: isDirectory, isPackage: isPackage) else { return NSWorkspace.shared.icon(forFile: url.path) }
         return image(tint: tint, glyph: specialFolders[url.standardizedFileURL.path])
+    }
+
+    private static var typeIcons: [String: NSImage] = [:]
+
+    /// Plain files share their type's icon, looked up once per extension instead of once per row.
+    /// Files without an extension (aliases, scripts…) still ask for their own icon.
+    private static func fileIcon(for url: URL) -> NSImage {
+        let ext = url.pathExtension.lowercased()
+        guard !ext.isEmpty, let type = UTType(filenameExtension: ext) else { return NSWorkspace.shared.icon(forFile: url.path) }
+        if let icon = typeIcons[ext] { return icon }
+        let icon = NSWorkspace.shared.icon(for: type)
+        typeIcons[ext] = icon
+        return icon
     }
 
     /// The system's special folders and the glyph each one wears.

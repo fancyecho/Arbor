@@ -115,6 +115,7 @@ struct FileListView: NSViewRepresentable {
 
     func updateNSView(_ container: LayoutFirewall, context: Context) {
         context.coordinator.update(with: self)
+        (context.coordinator.table?.headerView as? QuietHeaderView)?.isActivePane = isActive
     }
 
     /// Take whatever space SwiftUI offers. Without this SwiftUI re-measures the table every time a
@@ -881,9 +882,18 @@ struct FileListView: NSViewRepresentable {
 /// Column titles in small secondary type with no bezels or separators, and a chevron on the sorted column.
 /// Clicking, dragging and resizing columns are untouched: only the drawing is replaced.
 final class QuietHeaderView: NSTableHeaderView {
-    override var isOpaque: Bool { false }
+    /// The header floats over the rows as they scroll, so it paints the card's own color behind its titles
+    /// (the pane receiving commands is a shade brighter in dark mode).
+    var isActivePane = true {
+        didSet { if isActivePane != oldValue { needsDisplay = true } }
+    }
+
+    private static let activeFill = NSColor.adaptive(light: .white, dark: NSColor(hex: 0x1A1B1F))
+    private static let inactiveFill = NSColor.adaptive(light: NSColor(hex: 0xFBFBFC), dark: NSColor(hex: 0x15161A))
 
     override func draw(_ dirtyRect: NSRect) {
+        (isActivePane ? Self.activeFill : Self.inactiveFill).setFill()
+        dirtyRect.fill()
         guard let table = tableView else { return }
         let sorted = table.sortDescriptors.first
         for (index, column) in table.tableColumns.enumerated() where !column.isHidden {
@@ -1306,6 +1316,9 @@ final class FileCellView: NSTableCellView {
         }
         let scale = window?.backingScaleFactor ?? 2
         thumbnailTask = Task { @MainActor [weak self] in
+            // A row that scrolls straight past never asks Quick Look for anything.
+            try? await Task.sleep(for: .milliseconds(80))
+            guard !Task.isCancelled else { return }
             guard let image = await ThumbnailCache.shared.thumbnail(for: url, size: 32, modified: modified, scale: scale),
                   !Task.isCancelled, let self, self.thumbnailURL == url else { return }
             self.icon?.image = image

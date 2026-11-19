@@ -132,18 +132,20 @@ struct SpacePalette {
     }
 
     /// Ten hand-picked colors for the first ring's branches, warm and cool taking turns so neighbors
-    /// never blur together. The same in every window, whatever its workspace color.
+    /// never blur together. The same in every window, whatever its workspace color. Kept a step softer
+    /// than full-strength hues, in the same family as the workspace colors, so the chart sits in the
+    /// window instead of shouting over it.
     static let branchColors: [(h: Double, s: Double, b: Double)] = [
-        (0.64, 0.56, 0.92), // indigo
-        (0.03, 0.52, 0.96), // coral
-        (0.46, 0.55, 0.76), // teal
-        (0.11, 0.60, 0.98), // amber
-        (0.78, 0.44, 0.90), // violet
-        (0.56, 0.55, 0.95), // sky
-        (0.94, 0.46, 0.93), // rose
-        (0.30, 0.48, 0.78), // green
-        (0.08, 0.38, 0.88), // apricot
-        (0.70, 0.26, 0.82), // lavender gray
+        (0.66, 0.46, 0.88), // indigo
+        (0.04, 0.44, 0.92), // coral
+        (0.47, 0.46, 0.74), // teal
+        (0.11, 0.50, 0.94), // amber
+        (0.77, 0.36, 0.86), // violet
+        (0.56, 0.44, 0.90), // sky
+        (0.94, 0.38, 0.90), // rose
+        (0.30, 0.40, 0.76), // green
+        (0.08, 0.32, 0.86), // apricot
+        (0.70, 0.20, 0.80), // lavender gray
     ]
 
     func color(for segment: SunSegment) -> Color { tone(for: segment)?.color ?? Self.groupColor }

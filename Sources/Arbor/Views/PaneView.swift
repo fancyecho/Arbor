@@ -103,8 +103,6 @@ struct PaneHeader: View {
             .foregroundStyle(isActive || workspace.paneCount == 1 ? .primary : .secondary)
             .lineLimit(1)
             .truncationMode(.middle)
-            .contentTransition(.opacity)
-            .animation(.easeOut(duration: 0.2), value: tab.title)
     }
 
     @ViewBuilder

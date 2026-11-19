@@ -24,7 +24,9 @@ struct ArborApp: App {
         .commands { ArborCommands() }
 
         Settings {
+            // Switches and pickers in the front window's workspace color, not the system blue.
             SettingsView()
+                .tint((WorkspaceRegistry.shared.current?.tint ?? .indigo).color)
         }
 
         MenuBarExtra(isInserted: Binding(

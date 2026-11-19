@@ -96,7 +96,6 @@ struct SpaceView: View {
                     HStack(spacing: 0) {
                         chart(scan: scan, node: node, layout: layout, palette: palette)
                             .frame(width: min(proxy.size.width * 0.5, max(proxy.size.height - 70, 200)))
-                        Divider().opacity(0.4).padding(.vertical, 12)
                         list(scan: scan, node: node, hidden: hidden, layout: layout, palette: palette)
                     }
                 } else {
@@ -147,9 +146,10 @@ struct SpaceView: View {
             }
             SpaceFootnotes(scan: scan, node: node, workspace: workspace)
         }
-        .padding(.horizontal, 14)
-        .padding(.top, 12)
-        .padding(.bottom, 8)
+        .padding(.leading, Metrics.s)
+        .padding(.trailing, Metrics.l)
+        .padding(.top, Metrics.m)
+        .padding(.bottom, Metrics.s)
     }
 
     @ViewBuilder
@@ -330,14 +330,15 @@ private struct SpaceHeader: View {
                         .buttonStyle(.glassCompact).help(node === scan.root ? L("重新扫描") : L("重新扫描这个文件夹"))
                 }
             }
-            .font(.system(size: 11))
+            .font(TypeScale.secondary)
             if node === scan.root, let volume = scan.volume {
                 CapacityBar(volume: volume, scanned: scan.isScanning ? scan.scannedBytes : scan.root.size,
                             fraction: scan.fraction, scanning: scan.isScanning)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.top, 10)
+        .padding(.leading, 18)
+        .padding(.trailing, Metrics.l)
+        .padding(.top, Metrics.m)
     }
 
     private var summary: String {
@@ -533,11 +534,12 @@ private struct SpaceRow: View {
     @Environment(\.arborTint) private var tint
 
     var body: some View {
+        // Laid out like a list row: icon and name, then the size. The slice's color lives in the bar only
+        // (a swatch beside a folder icon said the same thing twice).
         HStack(spacing: 8) {
-            RoundedRectangle(cornerRadius: 3, style: .continuous).fill(color).frame(width: 9, height: 9)
-            icon.frame(width: 16, height: 16)
+            icon.frame(width: 18, height: 18)
             VStack(alignment: .leading, spacing: 1) {
-                Text(node.name).lineLimit(1).truncationMode(.middle)
+                Text(node.name).font(TypeScale.body).lineLimit(1).truncationMode(.middle)
                 if showsPath {
                     Text(location).font(.system(size: 10)).foregroundStyle(.tertiary).lineLimit(1).truncationMode(.head)
                 }
@@ -557,7 +559,7 @@ private struct SpaceRow: View {
                         Capsule().fill(color).frame(width: max(proxy.size.width * CGFloat(node.size) / CGFloat(max(largest, 1)), 3))
                     }
             }
-            .frame(width: 54, height: 4)
+            .frame(width: 64, height: 4)
             Text(Format.bytes(node.size))
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
@@ -571,13 +573,14 @@ private struct SpaceRow: View {
                 Color.clear.frame(width: 12)
             }
         }
-        .font(.system(size: 12))
-        .padding(.horizontal, 8)
-        .frame(height: showsPath ? 36 : 26)
+        .font(TypeScale.secondary)
+        .padding(.horizontal, 10)
+        .frame(height: showsPath ? 38 : 30)
         .background {
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .fill(tint.opacity(isSelected ? 0.18 : (isHovered ? 0.08 : 0)))
+            RoundedRectangle(cornerRadius: Metrics.controlRadius - 1, style: .continuous)
+                .fill(tint.opacity(isSelected ? 0.14 : (isHovered ? 0.06 : 0)))
         }
+        .animation(.easeOut(duration: 0.12), value: isHovered)
         .contentShape(Rectangle())
         .onHover(perform: onHover)
         .gesture(TapGesture(count: 2).onEnded(onOpen))

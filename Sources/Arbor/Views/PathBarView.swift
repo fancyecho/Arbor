@@ -149,7 +149,20 @@ struct PathBarView: View {
     }
 
     /// Paths inside the home folder start at 🏠, others at the volume.
-    static func components(of url: URL, stopAtHome: Bool = true) -> [Part] {
+    /// Breadcrumbs by path: working them out reads volume information for every folder up the path, and
+    /// the header asks again on every redraw.
+    @MainActor private static var componentCache: [String: [Part]] = [:]
+
+    @MainActor static func components(of url: URL, stopAtHome: Bool = true) -> [Part] {
+        let key = (stopAtHome ? "h|" : "v|") + url.standardizedFileURL.path
+        if let cached = componentCache[key] { return cached }
+        let parts = computeComponents(of: url, stopAtHome: stopAtHome)
+        if componentCache.count > 300 { componentCache.removeAll() }
+        componentCache[key] = parts
+        return parts
+    }
+
+    private static func computeComponents(of url: URL, stopAtHome: Bool) -> [Part] {
         let home = FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL.path
         let path = url.standardizedFileURL.path
         var parts: [Part] = []
