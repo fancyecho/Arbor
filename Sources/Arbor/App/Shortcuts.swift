@@ -58,6 +58,7 @@ enum ShortcutCatalog {
         ("复制", KeyboardShortcut("d")),
         ("批量重命名…", KeyboardShortcut("r", modifiers: [.command, .shift])),
         ("移到废纸篓", KeyboardShortcut(.delete)),
+        ("清倒废纸篓…", KeyboardShortcut(.delete, modifiers: [.command, .shift])),
         ("对比两个窗格", KeyboardShortcut("c", modifiers: [.command, .control])),
         ("加入暂存架", KeyboardShortcut("a", modifiers: [.command, .option])),
         ("同步文件夹…", KeyboardShortcut("y", modifiers: [.command, .control])),

@@ -36,6 +36,7 @@ enum PaletteCommands {
             cmd(L("用 AI 重命名"), "sparkles", "⌥⇧⌘R") { ws.aiRename() },
             cmd(L("问 Arbor：用一句话找文件"), "sparkles", "⌘J") { ws.showAIBar = true },
             cmd(L("移到废纸篓"), "trash", "⌘⌫") { ws.moveToTrash() },
+            cmd(L("清倒废纸篓…"), "trash.slash", "⇧⌘⌫") { TrashBin.shared.empty(workspace: ws) },
             cmd(L("复制所选项目"), "plus.square.on.square", "⌘D") { ws.duplicate() },
             cmd(L("拷贝到另一窗格"), "arrow.right.doc.on.clipboard", "⌥⌘→") { ws.copyToOtherPane() },
             cmd(L("对比两个窗格"), "arrow.left.arrow.right.square", "⌃⌘C") { ws.comparePanes() },

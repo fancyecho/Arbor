@@ -52,7 +52,12 @@ enum ContextMenuBuilder {
         let pasteEntry = MenuEntry(L("粘贴"), symbol: "doc.on.clipboard", isEnabled: ws.canPaste) { ws.paste() }
 
         guard !selected.isEmpty else {
-            return [
+            let trash: [[MenuEntry]] = TrashBin.isTrash(tab.url) && !tab.isSearchMode
+                ? [[MenuEntry(L("清倒废纸篓…"), symbol: "trash.slash", isEnabled: !TrashBin.shared.isEmptying) {
+                    TrashBin.shared.empty(workspace: ws)
+                }]]
+                : []
+            return trash + [
                 [
                     MenuEntry(L("新建文件夹"), symbol: "folder.badge.plus") { ws.newFolder() },
                     MenuEntry(L("新建文件"), symbol: "doc.badge.plus", children: templateEntries(ws)),

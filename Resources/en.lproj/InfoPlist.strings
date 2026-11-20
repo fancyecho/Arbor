@@ -1,6 +1,6 @@
 /* Info.plist, in English. */
 
-"NSAppleEventsUsageDescription" = "Arbor uses Apple events to open folders in Terminal.";
+"NSAppleEventsUsageDescription" = "Arbor uses Apple events to open folders in Terminal, and to ask Finder to empty the Trash when it doesn't have Full Disk Access.";
 "NSDesktopFolderUsageDescription" = "Arbor needs access to your Desktop to browse and manage its files.";
 "NSDocumentsFolderUsageDescription" = "Arbor needs access to your Documents to browse and manage its files.";
 "NSDownloadsFolderUsageDescription" = "Arbor needs access to your Downloads to browse and manage its files.";

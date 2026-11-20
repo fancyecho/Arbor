@@ -70,6 +70,15 @@ struct PaneHeader: View {
                     title
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                if !tab.isSearchMode, TrashBin.isTrash(tab.url) {
+                    // Like Finder's Trash window: emptying is right where its contents are.
+                    Button(L("清倒")) { TrashBin.shared.empty(workspace: workspace) }
+                        .controlSize(.small)
+                        // Unreadable (no Full Disk Access) still empties: Finder does it then.
+                        .disabled(TrashBin.shared.isEmptying
+                                  || (tab.errorMessage == nil && !tab.isLoading && tab.items.allSatisfy { $0.name == ".DS_Store" }))
+                        .help(L("永久抹掉废纸篓中的所有项目（按住 ⌥ 跳过确认）"))
+                }
                 if showsTabButtons {
                     Button {
                         workspace.activate(pane)

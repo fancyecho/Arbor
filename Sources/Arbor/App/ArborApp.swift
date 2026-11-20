@@ -122,6 +122,13 @@ struct ArborCommands: Commands {
             Button(L("检查更新…")) { Updater.shared.check(userInitiated: true) }
         }
 
+        CommandGroup(after: .appSettings) {
+            Divider()
+            Button(L("清倒废纸篓…")) { TrashBin.shared.empty(workspace: workspace) }
+                .shortcut("清倒废纸篓…", KeyboardShortcut(.delete, modifiers: [.command, .shift]))
+                .disabled(TrashBin.shared.isEmptying)
+        }
+
         CommandGroup(replacing: .appTermination) {
             Button(L("退出 Arbor")) { AppActions.quit() }
                 .keyboardShortcut("q")

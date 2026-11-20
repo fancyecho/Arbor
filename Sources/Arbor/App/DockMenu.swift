@@ -30,6 +30,8 @@ final class DockMenu: NSObject {
             parent.submenu = submenu
             menu.addItem(parent)
         }
+        menu.addItem(.separator())
+        menu.addItem(item(L("清倒废纸篓…"), #selector(emptyTrash)))
         return menu
     }
 
@@ -55,6 +57,13 @@ final class DockMenu: NSObject {
             guard let saved = WorkspaceLibrary.shared.saved.first(where: { $0.id == id }) else { return }
             AppActions.show()
             WorkspaceRegistry.shared.current?.open(saved)
+        }
+    }
+
+    @objc private func emptyTrash() {
+        MainActor.assumeIsolated {
+            NSApp.activate()
+            TrashBin.shared.empty(workspace: WorkspaceRegistry.shared.current)
         }
     }
 }

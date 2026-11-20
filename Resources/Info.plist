@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>ArborReleaseTag</key>
-	<string>v1.2.0</string>
+	<string>v1.2.1</string>
 	<key>ArborUpdateRepository</key>
 	<string>fancyecho/Arbor</string>
 	<key>CFBundleDevelopmentRegion</key>
@@ -57,15 +57,15 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.2.0</string>
+	<string>1.2.1</string>
 	<key>CFBundleVersion</key>
-	<string>14</string>
+	<string>15</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.productivity</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>NSAppleEventsUsageDescription</key>
-	<string>Arbor 使用 Apple 事件在终端中打开文件夹。</string>
+	<string>Arbor 使用 Apple 事件在终端中打开文件夹，并在没有完全磁盘访问权限时请访达清倒废纸篓。</string>
 	<key>NSDesktopFolderUsageDescription</key>
 	<string>Arbor 需要访问桌面以浏览和管理其中的文件。</string>
 	<key>NSDocumentsFolderUsageDescription</key>

@@ -632,6 +632,9 @@ private struct SpaceFootnotes: View {
                     Text(L("废纸篓里还有 \(Format.bytes(trash.size))，清倒后才会真正释放。"))
                     Button(L("打开废纸篓")) { workspace.activeTab.navigate(to: Places.trash.url) }
                         .buttonStyle(.tintLink)
+                    Button(L("清倒废纸篓…")) { TrashBin.shared.empty(workspace: workspace) }
+                        .buttonStyle(.tintLink)
+                        .disabled(TrashBin.shared.isEmptying)
                 }
             }
         }

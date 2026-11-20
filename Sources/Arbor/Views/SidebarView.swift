@@ -129,7 +129,11 @@ struct SidebarView: View {
                         }
                     }
                 }
-                row(Places.trash)
+                row(Places.trash) {
+                    Divider()
+                    Button(L("清倒废纸篓…"), systemImage: "trash.slash") { TrashBin.shared.empty(workspace: workspace) }
+                        .disabled(TrashBin.shared.isEmptying)
+                }
             } header: {
                 header(L("位置"), "locations", count: volumes.volumes.count + 1)
                     .contextMenu {
