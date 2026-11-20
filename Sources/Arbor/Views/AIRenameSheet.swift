@@ -40,6 +40,10 @@ struct AIRenameSheet: View {
                         }
                         .padding(16)
                         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        // The light runs around the status while the model reads (the sheet's own corner
+                        // isn't ours to match).
+                        .overlay { AIGlowBorder(cornerRadius: 12, lineWidth: 1, glow: 8, halo: 10, active: true) }
+                        .transition(.opacity)
                     }
                 }
             if let error {
@@ -62,11 +66,6 @@ struct AIRenameSheet: View {
         }
         .padding(18)
         .frame(width: 640, height: 480)
-        .overlay {
-            AIGlowBorder(cornerRadius: 12, lineWidth: 1.5, spread: 0.7, active: thinking)
-                .opacity(thinking ? 1 : 0)
-                .animation(.easeInOut(duration: 0.5), value: thinking)
-        }
         .onAppear(perform: generate)
         .onDisappear { task?.cancel() }
     }

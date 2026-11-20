@@ -100,7 +100,7 @@ extension NSColor {
 enum Metrics {
     /// Spacing steps.
     static let xs: CGFloat = 4, s: CGFloat = 8, m: CGFloat = 12, l: CGFloat = 16, xl: CGFloat = 24
-    /// Cards (panes, inspector): concentric with the window corner across the 10 pt margin.
+    /// Cards (panes, inspector).
     static let cardRadius: CGFloat = 16
     /// Wells and previews inside a card.
     static let wellRadius: CGFloat = 10

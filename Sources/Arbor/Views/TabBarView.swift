@@ -109,6 +109,7 @@ struct TabBarView: View {
 
 private struct TabChip: View {
     @Environment(\.arborTint) private var tint
+    @Environment(\.colorScheme) private var colorScheme
     let workspace: WorkspaceState
     let pane: PaneState
     let tab: TabState
@@ -197,7 +198,7 @@ private struct TabChip: View {
             // The assistant's results: the sparkle in the glow's colors.
             Image(systemName: "sparkles")
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(LinearGradient(colors: Array(AppSettings.shared.aiGlow.colors(dark: true).prefix(4)),
+                .foregroundStyle(LinearGradient(colors: Array(AppSettings.shared.aiGlow.colors(dark: colorScheme == .dark).prefix(4)),
                                                 startPoint: .topLeading, endPoint: .bottomTrailing))
                 .frame(width: 14, height: 14)
         } else {

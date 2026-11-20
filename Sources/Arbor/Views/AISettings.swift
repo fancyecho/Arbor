@@ -2,6 +2,7 @@ import SwiftUI
 
 /// Settings › AI: which model the command bar and AI renaming use, and how the glow looks.
 struct AISettings: View {
+    @Environment(\.colorScheme) private var colorScheme
     @Bindable private var settings = AppSettings.shared
     @Environment(\.arborTint) private var tint
     @State private var testing = false
@@ -40,18 +41,25 @@ struct AISettings: View {
                     ForEach(AIGlowStyle.allCases) { Text($0.title).tag($0) }
                 }
                 .pickerStyle(.segmented)
-                // A live sample of the edge light.
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(Color.primary.opacity(0.04))
-                    .frame(height: 64)
+                // A live sample: the ⌘J input as it looks, with its edge light.
+                Capsule()
+                    .fill(Surface.chip)
+                    .frame(height: 46)
                     .overlay {
                         HStack(spacing: 8) {
                             Image(systemName: "sparkles")
+                                .foregroundStyle(AngularGradient(colors: settings.aiGlow.colors(dark: colorScheme == .dark), center: .center))
                             Text(L("问 Arbor…")).foregroundStyle(.secondary)
+                            Spacer()
                         }
+                        .padding(.horizontal, 18)
                     }
-                    .overlay { AIGlowBorder(cornerRadius: 14, lineWidth: 1.5, spread: 0.7, active: glowPreview).id(settings.aiGlow) }
-                    .padding(.vertical, 8)
+                    .overlay {
+                        AIGlowBorder(cornerRadius: 23, lineWidth: 1, glow: 12, halo: glowPreview ? 12 : 0, active: glowPreview)
+                            .id(settings.aiGlow)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 16)
                     .onTapGesture { glowPreview.toggle() }
                     .help(L("点一下切换“思考中”和“待命”"))
             } header: {

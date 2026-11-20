@@ -10,12 +10,15 @@ struct AICommandBar: View {
     let workspace: WorkspaceState
 
     @Environment(\.arborTint) private var tint
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.openSettings) private var openSettings
     @State private var request = ""
     @State private var appeared = false
     @FocusState private var focused: Bool
 
-    private static let shape = RoundedRectangle(cornerRadius: 22, style: .continuous)
+    /// The input is a capsule, like the toolbar's glass groups.
+    private static let barHeight: CGFloat = 50
+    private static let shape = Capsule()
 
     private var agent: AIAgent { workspace.assistant }
     private var thinking: Bool { agent.isThinking }
@@ -67,7 +70,7 @@ struct AICommandBar: View {
         HStack(spacing: 10) {
             Image(systemName: "sparkles")
                 .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(AngularGradient(colors: AppSettings.shared.aiGlow.colors(dark: true), center: .center))
+                .foregroundStyle(AngularGradient(colors: AppSettings.shared.aiGlow.colors(dark: colorScheme == .dark), center: .center))
                 .symbolEffect(.pulse, isActive: thinking)
                 .symbolEffect(.bounce, value: agent.entries.count)
             TextField(agent.hasConversation ? L("继续说，或者问点别的…") : L("问 Arbor：找文件、整理文件、执行命令…"), text: $request)
@@ -97,11 +100,15 @@ struct AICommandBar: View {
             .animation(.spring(response: 0.3, dampingFraction: 0.7), value: thinking)
             .animation(.spring(response: 0.3, dampingFraction: 0.7), value: request.isEmpty)
         }
-        .padding(.horizontal, 16)
-        .frame(height: 50)
-        .floatingGlass(in: Self.shape, fallback: .regularMaterial)
-        .overlay { AIGlowBorder(cornerRadius: 22, lineWidth: 1.5, spread: 0.8, active: thinking) }
-        .shadow(color: .black.opacity(0.22), radius: 24, y: 10)
+        .padding(.horizontal, 18)
+        .frame(height: Self.barHeight)
+        // Solid, not glass: it floats over the file list, and clear glass let the names behind run into
+        // what you type. The light running around its edge is what marks it as the assistant.
+        .card(Surface.card(active: true), in: Self.shape)
+        .overlay {
+            AIGlowBorder(cornerRadius: Self.barHeight / 2, lineWidth: 1, glow: 12, halo: thinking ? 14 : 0, active: thinking)
+        }
+        .shadow(color: .black.opacity(0.18), radius: 18, y: 8)
     }
 
     /// Two rows of starting points, appearing one after another.
@@ -182,8 +189,9 @@ struct AICommandBar: View {
                     Rectangle()
                 }
             }
-            .floatingGlass(in: RoundedRectangle(cornerRadius: 20, style: .continuous), fallback: .regularMaterial)
-            .shadow(color: .black.opacity(0.16), radius: 20, y: 8)
+            // The conversation is content, so it sits on a solid card like the panes, not on glass.
+            .card(Surface.card(active: true), in: RoundedRectangle(cornerRadius: Metrics.cardRadius + 2, style: .continuous))
+            .shadow(color: .black.opacity(0.14), radius: 22, y: 10)
             .onAppear {
                 // Open on the latest exchange.
                 DispatchQueue.main.async { proxy.scrollTo("bottom", anchor: .bottom) }
@@ -209,7 +217,7 @@ struct AICommandBar: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .floatingGlass(in: RoundedRectangle(cornerRadius: 14, style: .continuous), fallback: .regularMaterial)
+        .card(Surface.card(active: true), in: RoundedRectangle(cornerRadius: Metrics.cardRadius - 2, style: .continuous))
     }
 
     private func run() {
@@ -372,9 +380,10 @@ private struct TurnView: View {
 /// Three dots in the glow's colors, rising one after another.
 private struct ThinkingDots: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        let colors = AppSettings.shared.aiGlow.colors(dark: true)
+        let colors = AppSettings.shared.aiGlow.colors(dark: colorScheme == .dark)
         SwiftUI.TimelineView(.animation(paused: reduceMotion)) { context in
             let t = context.date.timeIntervalSinceReferenceDate
             HStack(spacing: 3) {
@@ -416,7 +425,9 @@ private struct SuggestionChip: View {
             .padding(.horizontal, 12)
             .frame(height: 30)
             .frame(maxWidth: .infinity)
-            .floatingGlass(in: Capsule(), fallback: .thinMaterial)
+            .background(Capsule().fill(Surface.card(active: true)))
+            .overlay(Capsule().strokeBorder(hovering ? tint.opacity(0.45) : Surface.hairline, lineWidth: 1))
+            .shadow(color: Surface.shadow, radius: 8, y: 3)
             .scaleEffect(hovering ? 1.02 : 1)
             .contentShape(Capsule())
         }
