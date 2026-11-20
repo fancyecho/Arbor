@@ -164,6 +164,15 @@ struct WorkspaceWindow: View {
                 settings.aiModel = "mock"
                 if let path = env["ARBOR_DEMO_DIR"] { workspace.visiblePanes[0].activeTab.navigate(to: URL(fileURLWithPath: path)) }
                 workspace.ask(env["ARBOR_ASK"] ?? "上周下载的 PDF")
+                if env["ARBOR_AGAIN"] != nil {
+                    // Back to the first tab, then ask again: the result tab should come forward.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                        let pane = workspace.activePane
+                        if env["ARBOR_KEEP"] != nil { pane.tabs.last?.isTemporary = false }
+                        pane.activeTabID = pane.tabs[0].id
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { workspace.assistant.send("再找一次") }
+                    }
+                }
                 if env["ARBOR_APPROVE"] != nil {
                     Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { timer in
                         MainActor.assumeIsolated {

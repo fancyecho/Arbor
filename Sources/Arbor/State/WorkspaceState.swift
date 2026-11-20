@@ -53,10 +53,10 @@ final class WorkspaceState {
         if let existing = pane.tabs.first(where: \.isTemporary) {
             tab = existing
         } else {
-            tab = pane.newTab(url: activeTab.url, activate: false)
+            tab = pane.newTab(url: activeTab.url, activate: true)
             tab.isTemporary = true
         }
-        withAnimation(.snappy(duration: 0.3)) { pane.activeTabID = tab.id }
+        pane.activeTabID = tab.id
         tab.showAIQuery(query)
         focusToken += 1
         return tab

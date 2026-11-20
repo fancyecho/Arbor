@@ -250,4 +250,36 @@ final class SignatureTests: XCTestCase {
             XCTAssertFalse(error.localizedDescription.hasSuffix("："))
         }
     }
+
+    /// AI results open next to the current tab and become the active one; the next results reuse that tab,
+    /// unless it was kept; temporary tabs aren't saved with the session.
+    @MainActor func testAIResultsTab() {
+        let workspace = WorkspaceState(snapshot: nil)
+        workspace.setPaneCount(1)
+        let pane = workspace.activePane
+        let original = pane.activeTab
+        let query = TabState.AIQuery(title: "PDF", predicate: nil, scope: original.url, urls: [])
+        let results = workspace.showAIResults(query)
+        XCTAssertEqual(pane.tabs.count, 2)
+        XCTAssertEqual(pane.activeTabID, results.id)
+        XCTAssertTrue(results.isTemporary)
+        XCTAssertEqual(results.title, "PDF")
+
+        // From the original tab, new results bring the same tab back.
+        pane.activeTabID = original.id
+        let again = workspace.showAIResults(TabState.AIQuery(title: "图片", predicate: nil, scope: original.url, urls: []))
+        XCTAssertTrue(again === results)
+        XCTAssertEqual(pane.activeTabID, results.id)
+        XCTAssertEqual(pane.tabs.count, 2)
+        XCTAssertEqual(workspace.snapshot.panes[0].tabs.count, 1, "temporary tabs aren't restored")
+
+        // Kept: the next results get a tab of their own.
+        results.isTemporary = false
+        let third = workspace.showAIResults(query)
+        XCTAssertFalse(third === results)
+        XCTAssertEqual(pane.tabs.count, 3)
+        workspace.closeAIResults()
+        XCTAssertEqual(pane.tabs.count, 2)
+        XCTAssertTrue(pane.tabs.contains { $0 === results })
+    }
 }

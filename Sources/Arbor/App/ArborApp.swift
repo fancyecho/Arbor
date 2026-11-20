@@ -42,6 +42,7 @@ struct ArborApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let services = ServiceProvider()
     private let dockMenu = DockMenu()
+    private var tabKeyMonitor: Any?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
@@ -56,6 +57,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                                      forEventClass: AEEventClass(kCoreEventClass),
                                                      andEventID: AEEventID(kAEQuitApplication))
         Snapshot.scheduleIfRequested()
+        // ⌃Tab / ⌃⇧Tab switch tabs, as in Finder and Safari. A key-equivalent can't claim ⌃Tab (the window
+        // uses it to move focus first), so catch it before that.
+        tabKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.capsLock, .numericPad, .function])
+            guard event.keyCode == 48, flags == .control || flags == [.control, .shift],
+                  event.window?.attachedSheet == nil else { return event }
+            var handled = false
+            MainActor.assumeIsolated {
+                guard let workspace = WorkspaceRegistry.shared.current, workspace.activePane.tabs.count > 1,
+                      !workspace.showAIBar, !workspace.showPalette else { return }
+                workspace.activePane.selectNextTab(flags.contains(.shift) ? -1 : 1)
+                workspace.focusToken += 1
+                handled = true
+            }
+            return handled ? nil : event
+        }
         if !Snapshot.isActive {
             MainActor.assumeIsolated { GlobalHotKey.shared.register(AppSettings.shared.hotKey) }
             DispatchQueue.main.asyncAfter(deadline: .now() + 5) {

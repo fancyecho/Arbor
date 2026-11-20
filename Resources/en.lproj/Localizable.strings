@@ -792,7 +792,6 @@
 "关闭结果标签页" = "Close Results Tab";
 "看看是哪些文件" = "See which files";
 "继续说，或者问点别的…" = "Follow up, or ask something else…";
-"AI 结果：%@（临时标签页，下次的结果会显示在这里）" = "AI results: %@ (a temporary tab; the next results show here too)";
 "文件夹使用工作区颜色" = "Folders take the workspace color";
 "用户" = "Users";
 
@@ -807,3 +806,12 @@
 "此操作无法撤销，项目也不能再放回原处。" = "You can't undo this, and the items can't be put back.";
 "有 %@ 个项目没能删除（%@），它们可能正在使用中。" = "%@ {item|items} couldn't be deleted (%@). They may be in use.";
 "无法清倒废纸篓：Arbor 没有权限读取废纸篓，也没能请访达代劳。可在「系统设置 › 隐私与安全性」中为 Arbor 授予完全磁盘访问权限或允许它控制访达。" = "Couldn't empty the Trash: Arbor can't read it, and Finder couldn't do it either. In System Settings › Privacy & Security, give Arbor Full Disk Access or allow it to control Finder.";
+"下次的结果会替换这个标签页" = "The next results will replace this tab";
+"临时" = "Temporary";
+"保留" = "Keep";
+"把结果留在这个标签页里；下次的结果会另开一个" = "Keep these results in this tab; the next results open a new one";
+"来自 %@ 个位置" = "from %@ {place|places}";
+"正在查找…" = "Searching…";
+"AI 结果：%@" = "AI results: %@";
+"AI 结果：%@\n临时标签页（虚线边框），下次的结果会替换它；双击保留" = "AI results: %@\nA temporary tab (dashed edge): the next results replace it. Double-click to keep it.";
+"保留这个标签页" = "Keep This Tab";

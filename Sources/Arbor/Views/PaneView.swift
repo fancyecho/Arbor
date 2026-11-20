@@ -54,7 +54,12 @@ struct PaneHeader: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-            PathBarView(workspace: workspace, tab: tab, parentsOnly: true)
+            // AI results come from anywhere: say what they are instead of the folder the tab was opened from.
+            if tab.aiQuery != nil {
+                AIResultsLine(tab: tab)
+            } else {
+                PathBarView(workspace: workspace, tab: tab, parentsOnly: true)
+            }
             HStack(spacing: 9) {
                 icon
                 // The title wins: in a narrow pane the branch chip gives way before the name truncates.
@@ -70,6 +75,16 @@ struct PaneHeader: View {
                     title
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                if tab.isTemporary, tab.aiQuery != nil {
+                    Button {
+                        withAnimation(.snappy(duration: 0.2)) { tab.isTemporary = false }
+                    } label: {
+                        Label(L("保留"), systemImage: "checkmark.rectangle")
+                    }
+                    .controlSize(.small)
+                    .help(L("把结果留在这个标签页里；下次的结果会另开一个"))
+                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                }
                 if !tab.isSearchMode, TrashBin.isTrash(tab.url) {
                     // Like Finder's Trash window: emptying is right where its contents are.
                     Button(L("清倒")) { TrashBin.shared.empty(workspace: workspace) }
@@ -129,6 +144,41 @@ struct PaneHeader: View {
                 .interpolation(.high)
                 .frame(width: 24, height: 24)
         }
+    }
+}
+
+/// Above the title of an AI results tab: what it is, how many, from how many places.
+private struct AIResultsLine: View {
+    let tab: TabState
+    @Environment(\.arborTint) private var tint
+
+    var body: some View {
+        let items = tab.visibleItems
+        let places = Set(items.map { $0.url.deletingLastPathComponent().path }).count
+        HStack(spacing: 5) {
+            Image(systemName: "sparkles").font(.system(size: 9.5, weight: .semibold)).foregroundStyle(tint)
+            Text(L("AI 结果")).foregroundStyle(tint)
+            Text("·").foregroundStyle(.quaternary)
+            if tab.isSearching {
+                Text(L("正在查找…"))
+            } else {
+                Text(L("\(items.count) 项")).contentTransition(.numericText())
+                if places > 1 {
+                    Text("·").foregroundStyle(.quaternary)
+                    Text(L("来自 \(places) 个位置"))
+                }
+            }
+            if tab.isTemporary {
+                Text("·").foregroundStyle(.quaternary)
+                Text(L("临时")).help(L("下次的结果会替换这个标签页"))
+            }
+        }
+        .font(.system(size: 11, weight: .medium))
+        .foregroundStyle(.secondary)
+        .lineLimit(1)
+        .frame(height: 20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .animation(.snappy(duration: 0.2), value: items.count)
     }
 }
 
