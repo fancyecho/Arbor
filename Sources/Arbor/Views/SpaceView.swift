@@ -11,6 +11,7 @@ struct SpaceView: View {
     let isActive: Bool
 
     @Environment(\.arborTint) private var tint
+    @Environment(\.colorScheme) private var colorScheme
     @State private var hovered: SpaceNode?
     // Screenshot aid: ARBOR_SPACE_LIST=devCaches opens on the developer caches.
     @State private var listMode: ListMode = ProcessInfo.processInfo.environment["ARBOR_SPACE_LIST"]
@@ -87,7 +88,8 @@ struct SpaceView: View {
         let isScanRoot = node === scan.root
         let hidden = isScanRoot && scan.unaccounted > 0 ? cache.hidden(size: scan.unaccounted) : nil
         let layout = cache.layout(for: node, extra: hidden, revision: scan.revision)
-        let palette = SpacePalette(coloring: AppSettings.shared.spaceColoring)
+        let palette = SpacePalette(coloring: AppSettings.shared.spaceColoring, tint: workspace.tint.nsColor,
+                                   dark: colorScheme == .dark)
         return GeometryReader { proxy in
             let wide = proxy.size.width >= 520
             VStack(spacing: 0) {

@@ -9,6 +9,8 @@ struct DevCacheList: View {
     let node: SpaceNode
 
     @Environment(\.arborTint) private var tint
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.arborTintNSColor) private var tintColor
     @State private var items: [DevCacheItem]?
     @State private var picked: Set<URL> = []
     @State private var hovered: URL?
@@ -65,7 +67,7 @@ struct DevCacheList: View {
         return VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(Format.bytes(total))
-                    .font(.system(size: 22, weight: .semibold, design: .rounded))
+                    .font(TypeScale.title)
                     .contentTransition(.numericText())
                 Text(L("可以重新生成，\(items.count) 处"))
                     .font(.callout)
@@ -83,13 +85,15 @@ struct DevCacheList: View {
             // How much of it belongs to projects nobody has touched in a month.
             GeometryReader { proxy in
                 let staleBytes = stale.reduce(Int64(0)) { $0 + $1.size }
-                HStack(spacing: 1.5) {
-                    Capsule().fill(Color.orange.gradient)
+                HStack(spacing: 2) {
+                    Capsule().fill(staleFill)
                         .frame(width: proxy.size.width * Double(staleBytes) / Double(max(total, 1)))
-                    Capsule().fill(tint.opacity(0.55))
+                    Capsule().fill(tint.opacity(0.35))
                 }
             }
-            .frame(height: 6)
+            .frame(height: 5)
+            // One set of actions, all the same height: two quiet chips, and the one that removes things in the
+            // workspace color only once there is something to remove.
             HStack(spacing: 8) {
                 Button(L("选中闲置 30 天的")) {
                     withAnimation(.snappy) { picked = Set(stale.map(\.url)) }
@@ -99,18 +103,19 @@ struct DevCacheList: View {
                     withAnimation(.snappy) { picked = picked.isEmpty ? Set(items.map(\.url)) : [] }
                 }
                 Spacer(minLength: 4)
-                Button {
-                    trash(chosen)
-                } label: {
-                    Label(L("移到废纸篓"), systemImage: "trash").lineLimit(1)
+                if chosen.isEmpty {
+                    Button {} label: { Label(L("移到废纸篓"), systemImage: "trash") }
+                        .disabled(true)
+                } else {
+                    Button { trash(chosen) } label: { Label(L("移到废纸篓"), systemImage: "trash").lineLimit(1) }
+                        .buttonStyle(.glassProminentCompact)
+                        .fixedSize()
+                        .disabled(trashing)
+                        .transition(.opacity)
                 }
-                .buttonStyle(.glassProminent)
-                .fixedSize()
-                .disabled(chosen.isEmpty || trashing)
             }
-            .buttonStyle(.glassCompact)
-            .font(.system(size: 11))
-            .lineLimit(1)
+            .buttonStyle(.chip)
+            .animation(.easeOut(duration: 0.18), value: chosen.isEmpty)
         }
     }
 
@@ -167,17 +172,24 @@ struct DevCacheList: View {
                         .contentTransition(.symbolEffect(.replace))
                 }
                 .buttonStyle(.plain)
-                Image(systemName: group.symbol)
-                    .font(.system(size: 13))
-                    .foregroundStyle(tint.opacity(0.85))
-                    .frame(width: 18)
+                SwiftUI.Group {
+                    if group.items.first?.rule.belongsToProject == true {
+                        // A project: the same folder as in the list.
+                        Image(nsImage: FolderIcon.image(tint: tintColor)).resizable().frame(width: 18, height: 18)
+                    } else {
+                        Image(systemName: group.symbol)
+                            .font(.system(size: 13))
+                            .foregroundStyle(tint.opacity(0.85))
+                    }
+                }
+                .frame(width: 18)
                 VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 6) {
                         Text(group.title).font(.system(size: 13, weight: .semibold)).lineLimit(1)
                         if group.items.first?.rule.belongsToProject == true {
                             Text(groupAge(group))
                                 .font(.system(size: 10.5, weight: .medium))
-                                .foregroundStyle(group.isStale ? Color.orange : Color.secondary)
+                                .foregroundStyle(group.isStale ? staleColor : Color.secondary)
                         }
                     }
                     Text(group.subtitle)
@@ -205,7 +217,7 @@ struct DevCacheList: View {
             ForEach(group.items) { item in cacheRow(item, largest: largest) }
         }
         .padding(.vertical, 4)
-        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.primary.opacity(0.035)))
+        .background(RoundedRectangle(cornerRadius: Metrics.wellRadius + 2, style: .continuous).fill(Surface.chip))
         .transition(.asymmetric(insertion: .opacity, removal: .move(edge: .leading).combined(with: .opacity)))
     }
 
@@ -213,19 +225,20 @@ struct DevCacheList: View {
     private func cacheRow(_ item: DevCacheItem, largest: Int64) -> some View {
         let isPicked = picked.contains(item.url)
         let isOpen = expanded.contains(item.url)
-        let color = item.rule.color
+        let tone = item.rule.tone(dark: colorScheme == .dark)
+        let color = tone.fill
         return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
                 Image(systemName: isPicked ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 13))
                     .foregroundStyle(isPicked ? tint : Color.secondary.opacity(0.45))
                     .contentTransition(.symbolEffect(.replace))
-                // The kind, in its own color: easy to tell node_modules from build output at a glance.
+                // The kind, in its own soft color: easy to tell node_modules from build output at a glance.
                 Image(systemName: item.rule.symbol)
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(tone.ink)
                     .frame(width: 22, height: 22)
-                    .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(color.gradient))
+                    .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(color.opacity(0.22)))
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
                         Text(cacheLabel(item))
@@ -236,13 +249,13 @@ struct DevCacheList: View {
                             .font(.system(size: 10, weight: .semibold))
                             .padding(.horizontal, 6)
                             .padding(.vertical, 1.5)
-                            .background(Capsule().fill(color.opacity(0.16)))
-                            .foregroundStyle(color)
+                            .background(Capsule().fill(color.opacity(0.18)))
+                            .foregroundStyle(tone.ink)
                             .fixedSize()
                     }
                     Text(item.rule.belongsToProject ? item.rule.regenerate : age(item))
                         .font(.system(size: 10.5))
-                        .foregroundStyle(item.isStale && !item.rule.belongsToProject ? Color.orange : Color.secondary)
+                        .foregroundStyle(item.isStale && !item.rule.belongsToProject ? staleColor : Color.secondary)
                         .lineLimit(1)
                 }
                 Spacer(minLength: 6)
@@ -295,6 +308,18 @@ struct DevCacheList: View {
             }
             if isOpen { contents(of: item).transition(.opacity.combined(with: .move(edge: .top))) }
         }
+    }
+
+    /// The idle share of the bar: a lighter amber than the text, so a fill doesn't turn brown.
+    private var staleFill: Color {
+        colorScheme == .dark ? Color(hue: 0.11, saturation: 0.55, brightness: 0.92)
+            : Color(hue: 0.11, saturation: 0.5, brightness: 0.95)
+    }
+
+    /// "Idle for a month": a soft amber, the same strength as the rest of the page.
+    private var staleColor: Color {
+        colorScheme == .dark ? Color(hue: 0.11, saturation: 0.55, brightness: 0.92)
+            : Color(hue: 0.1, saturation: 0.7, brightness: 0.72)
     }
 
     /// The biggest things inside a cache, from the scan.
@@ -379,21 +404,30 @@ struct DevCacheList: View {
 }
 
 extension DevCacheRule {
-    /// Each kind of cache has its own color in the list.
-    var color: Color {
+    /// Each kind of cache keeps a hue of its own, at the same quiet strength as the chart's colors.
+    private var hue: (h: Double, s: Double) {
         switch self {
-        case .nodeModules: .green
-        case .swiftBuild: .orange
-        case .derivedData: .blue
-        case .pods: .red
-        case .cargoTarget: .brown
-        case .mavenTarget, .gradleBuild, .gradleProject: .teal
-        case .cmakeBuild: .gray
-        case .webBuildCache: .purple
-        case .pythonVenv: .yellow
-        case .deviceSupport: .indigo
-        case .simulatorCaches: .cyan
-        case .packageCache: .mint
+        case .nodeModules: (0.36, 0.42)
+        case .swiftBuild: (0.07, 0.5)
+        case .derivedData: (0.6, 0.45)
+        case .pods: (0.98, 0.42)
+        case .cargoTarget: (0.08, 0.3)
+        case .mavenTarget, .gradleBuild, .gradleProject: (0.48, 0.42)
+        case .cmakeBuild: (0.62, 0.06)
+        case .webBuildCache: (0.77, 0.38)
+        case .pythonVenv: (0.13, 0.5)
+        case .deviceSupport: (0.67, 0.4)
+        case .simulatorCaches: (0.53, 0.42)
+        case .packageCache: (0.44, 0.38)
         }
+    }
+
+    /// The soft fill (bars, tile and tag backgrounds) and a readable ink for symbols and text on it.
+    func tone(dark: Bool) -> (fill: Color, ink: Color) {
+        let (h, s) = hue
+        let fill = Color(hue: h, saturation: s, brightness: dark ? 0.85 : 0.82)
+        let ink = dark ? Color(hue: h, saturation: s * 0.8, brightness: 0.95)
+            : Color(hue: h, saturation: min(s * 1.5, 1), brightness: 0.55)
+        return (fill, ink)
     }
 }

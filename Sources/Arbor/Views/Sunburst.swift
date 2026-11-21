@@ -111,6 +111,10 @@ struct SunburstLayout {
 
 // MARK: - Colors
 
+/// Colors for the chart, worked out from the workspace color: the largest folder wears the workspace
+/// color itself and the rest take neighboring hues on either side of it, alternating lighter and deeper
+/// so slices that sit side by side never blur together. Flat, quiet tones in the same family as the rest
+/// of the window; switching workspaces recolors the chart with it.
 struct SpacePalette {
     struct Tone {
         var hue: Double
@@ -119,34 +123,23 @@ struct SpacePalette {
         var opacity: Double = 1
 
         var color: Color { Color(hue: hue, saturation: saturation, brightness: brightness).opacity(opacity) }
-        /// A touch lighter and softer: the outer edge of a slice's gradient.
-        var light: Color {
-            Color(hue: hue, saturation: saturation * 0.82, brightness: min(brightness + 0.07, 1)).opacity(opacity)
-        }
     }
 
     let coloring: SpaceColoring
+    let tintHue: Double
+    let dark: Bool
 
-    init(coloring: SpaceColoring) {
+    init(coloring: SpaceColoring, tint: NSColor = WorkspaceTint.indigo.nsColor, dark: Bool = false) {
         self.coloring = coloring
+        self.dark = dark
+        var hue: CGFloat = 0.66
+        if let rgb = tint.usingColorSpace(.sRGB) { hue = rgb.hueComponent }
+        tintHue = Double(hue)
     }
 
-    /// Ten hand-picked colors for the first ring's branches, warm and cool taking turns so neighbors
-    /// never blur together. The same in every window, whatever its workspace color. Kept a step softer
-    /// than full-strength hues, in the same family as the workspace colors, so the chart sits in the
-    /// window instead of shouting over it.
-    static let branchColors: [(h: Double, s: Double, b: Double)] = [
-        (0.66, 0.46, 0.88), // indigo
-        (0.04, 0.44, 0.92), // coral
-        (0.47, 0.46, 0.74), // teal
-        (0.11, 0.50, 0.94), // amber
-        (0.77, 0.36, 0.86), // violet
-        (0.56, 0.44, 0.90), // sky
-        (0.94, 0.38, 0.90), // rose
-        (0.30, 0.40, 0.76), // green
-        (0.08, 0.32, 0.86), // apricot
-        (0.70, 0.20, 0.80), // lavender gray
-    ]
+    /// Hue steps away from the workspace color for each first-ring branch, in order. Consecutive branches
+    /// (neighbors on the ring) land on opposite sides, so they differ in hue as well as in lightness.
+    static let hueSteps: [Double] = [0, 0.08, -0.08, 0.16, -0.16, 0.04, -0.12, 0.12, -0.04, 0.2]
 
     func color(for segment: SunSegment) -> Color { tone(for: segment)?.color ?? Self.groupColor }
 
@@ -165,37 +158,46 @@ struct SpacePalette {
     func tone(node: SpaceNode, branch: Int, depth: Int) -> Tone? {
         switch node.kind {
         case .smallFiles, .unreadable: return nil
-        case .hidden: return Tone(hue: 0.62, saturation: 0.06, brightness: 0.5, opacity: 0.8)
+        case .hidden: return Tone(hue: tintHue, saturation: 0.05, brightness: dark ? 0.45 : 0.72)
         default: break
         }
-        let fade = pow(0.86, Double(depth - 1))
-        let lift = 0.03 * Double(depth - 1)
+        // Further out: softer and lighter, like the outer rings of a tree.
+        let ring = Double(depth - 1)
+        let fade = pow(0.8, ring)
+        let lift = (dark ? 0.02 : 0.03) * ring
+        let leaf = node.kind == .file ? 0.85 : 1
         if coloring == .types {
             let base = node.dominantCategory.hsb
-            return Tone(hue: base.h, saturation: base.s * fade, brightness: min(base.b + lift, 1))
+            return Tone(hue: base.h, saturation: base.s * fade * leaf, brightness: min(base.b + lift, 0.97))
         }
-        let colors = Self.branchColors
-        let base = colors[branch % colors.count]
-        // Past the tenth branch the colors repeat, a shade deeper so repeats don't sit side by side.
-        let round = Double(branch / colors.count)
-        let leaf = node.kind == .file ? 0.8 : 1
-        return Tone(hue: base.h, saturation: base.s * fade * leaf,
-                    brightness: min(max(base.b - 0.08 * round, 0.55) + lift, 1))
+        let steps = Self.hueSteps
+        let step = steps[branch % steps.count]
+        // Past the last step the hues repeat, a shade deeper so repeats don't sit side by side.
+        let round = Double(branch / steps.count)
+        let deeper = branch % 2 == 0
+        var hue = (tintHue + step).truncatingRemainder(dividingBy: 1)
+        if hue < 0 { hue += 1 }
+        let saturation = (deeper ? 0.46 : 0.36) * (dark ? 0.9 : 1)
+        let brightness = dark ? (deeper ? 0.78 : 0.88) : (deeper ? 0.86 : 0.93)
+        return Tone(hue: hue, saturation: saturation * fade * leaf,
+                    brightness: min(max(brightness - 0.06 * round, 0.5) + lift, 0.97))
     }
 }
 
 extension FileCategory {
+    /// Each kind keeps a hue of its own (the legend and "类型" coloring need them told apart), all at the
+    /// same quiet strength as the folder colors.
     var hsb: (h: Double, s: Double, b: Double) {
         switch self {
-        case .video: (0.97, 0.6, 0.93)
-        case .image: (0.07, 0.62, 0.97)
-        case .audio: (0.82, 0.46, 0.9)
-        case .document: (0.57, 0.56, 0.95)
-        case .app: (0.69, 0.5, 0.93)
-        case .developer: (0.43, 0.52, 0.8)
-        case .archive: (0.12, 0.56, 0.9)
-        case .cache: (0.52, 0.3, 0.8)
-        case .other: (0.62, 0.08, 0.72)
+        case .video: (0.97, 0.42, 0.9)
+        case .image: (0.07, 0.44, 0.93)
+        case .audio: (0.82, 0.34, 0.88)
+        case .document: (0.58, 0.42, 0.92)
+        case .app: (0.69, 0.38, 0.9)
+        case .developer: (0.44, 0.4, 0.78)
+        case .archive: (0.12, 0.42, 0.9)
+        case .cache: (0.52, 0.24, 0.8)
+        case .other: (0.62, 0.06, 0.72)
         }
     }
 
@@ -308,8 +310,9 @@ struct SunRings {
 
 // MARK: - View
 
-/// The rings. Hover lights up a slice and everything inside it; clicking a folder zooms into it (the pane
-/// navigates there), clicking the middle goes back up. Rings draw themselves in when the chart appears.
+/// The rings. Hover brings a slice and everything inside it forward; clicking a folder zooms into it (the
+/// pane navigates there), clicking the middle goes back up. Motion stays small: the chart fades in, the
+/// zoom is quick, and hover only lets the rest step back a little.
 struct SunburstView: View {
     let root: SpaceNode
     let layout: SunburstLayout
@@ -320,7 +323,7 @@ struct SunburstView: View {
 
     /// The zoom between the previous root and this one.
     @State private var zoom: Zoom?
-    /// The rings sweeping in, the first time the chart appears (or after jumping somewhere unrelated).
+    /// The chart fading in, the first time it appears (or after jumping somewhere unrelated).
     @State private var reveal: Date?
     @State private var previous: (root: SpaceNode, layout: SunburstLayout)?
     @State private var size: CGSize = .zero
@@ -337,12 +340,14 @@ struct SunburstView: View {
         let began: Date
     }
 
-    private static let revealDuration = 1.1
-    private static let focusDuration = 0.16
+    private static let revealDuration = 0.35
+    private static let focusDuration = 0.14
+    /// Zoom speed: the same spring as the rest of the window, a little quicker (about a third of a second).
+    private static let zoomSpeed = 1.2
 
     var body: some View {
         TimelineView(.animation(paused: zoom == nil && reveal == nil && focusFade == nil)) { context in
-            let zoomProgress = zoom.map { Double(DeckGeometry.ease(context.date.timeIntervalSince($0.began) * 0.85)) } ?? 1
+            let zoomProgress = zoom.map { Double(DeckGeometry.ease(context.date.timeIntervalSince($0.began) * Self.zoomSpeed)) } ?? 1
             let revealTime = reveal.map { context.date.timeIntervalSince($0) }
             // Clamped: a paused timeline hands back a stale date on its first frame, giving negative time.
             let focusProgress = focusFade.map { min(max(context.date.timeIntervalSince($0.began) / Self.focusDuration, 0), 1) } ?? 1
@@ -412,7 +417,7 @@ struct SunburstView: View {
         guard let focus else { return 1 }
         if segment.id == focus.id { return 1 }
         // What's inside the slice and the path back to the middle stay readable, a step below the slice itself.
-        if layout.isWithin(segment, focus.id) || layout.isWithin(focus, segment.id) { return colorScheme == .dark ? 0.9 : 0.72 }
+        if layout.isWithin(segment, focus.id) || layout.isWithin(focus, segment.id) { return 1 }
         return dimmed
     }
 
@@ -420,6 +425,16 @@ struct SunburstView: View {
                       focusProgress: Double) {
         let rings = rings(for: size)
         let dark = colorScheme == .dark
+        if let revealTime {
+            // Fade in and settle from just under full size.
+            let t = min(max(revealTime / Self.revealDuration, 0), 1)
+            let eased = 1 - pow(1 - t, 3)
+            graphics.opacity = eased
+            let scale = 0.97 + 0.03 * eased
+            graphics.translateBy(x: rings.center.x, y: rings.center.y)
+            graphics.scaleBy(x: scale, y: scale)
+            graphics.translateBy(x: -rings.center.x, y: -rings.center.y)
+        }
 
         // The silhouette is always a whole disc: each ring has a faint track, the edge a hairline.
         for depth in 1...layout.maxDepth {
@@ -434,8 +449,9 @@ struct SunburstView: View {
         let focus = hovered.flatMap { layout.segment(for: $0) }
         let fadingFrom = focusFade.flatMap { $0.from }.flatMap { layout.segment(for: $0) }
         let fading = focusFade != nil
-        let dimmed = dark ? 0.38 : 0.42
-        var outlines: [(path: Path, tone: SpacePalette.Tone, strength: Double, inner: CGFloat, outer: CGFloat)] = []
+        // The rest steps back only a little: enough to see what's under the pointer, not a flash.
+        let dimmed = dark ? 0.55 : 0.6
+        var outlines: [(path: Path, tone: SpacePalette.Tone, strength: Double)] = []
 
         for segment in layout.segments {
             var start = segment.start, end = segment.end
@@ -455,11 +471,6 @@ struct SunburstView: View {
                     depth = mix(depth - 1, depth, p)
                     if end <= start { continue }
                 }
-            } else if let revealTime {
-                // Sweep clockwise, each ring a beat after the one inside it.
-                let sweep = Double(DeckGeometry.ease((revealTime - 0.08 * Double(segment.depth - 1)) * 0.75))
-                if start >= sweep { continue }
-                end = min(end, sweep)
             }
             let inner = max(rings.inner(depth), rings.hole)
             let outer = rings.inner(depth + 1)
@@ -471,50 +482,26 @@ struct SunburstView: View {
             let opacity = mix(before, now, focusProgress)
 
             let path = SunRings.wedge(center: rings.center, inner: inner, outer: outer, start: start, end: end)
-            if var tone = palette.tone(for: segment) {
+            if let tone = palette.tone(for: segment) {
                 let isFocus = segment.id == focus?.id
                 let wasFocus = fading && segment.id == fadingFrom?.id
                 let highlight = (isFocus ? focusProgress : 0) + (wasFocus ? 1 - focusProgress : 0)
-                if highlight > 0 {
-                    // The slice itself takes on a deeper, richer version of its color (light pastels need it most).
-                    if dark {
-                        tone.brightness = min(tone.brightness + 0.05 * highlight, 1)
-                        tone.saturation = min(tone.saturation * (1 + 0.12 * highlight), 1)
-                    } else {
-                        tone.saturation = min(tone.saturation * (1 + 0.45 * highlight), 1)
-                        tone.brightness = tone.brightness - 0.06 * highlight
-                    }
-                    outlines.append((path, tone, highlight, inner, outer))
-                }
-                let shading = GraphicsContext.Shading.radialGradient(
-                    Gradient(colors: [tone.color.opacity(opacity), tone.light.opacity(opacity)]),
-                    center: rings.center, startRadius: inner, endRadius: outer)
-                graphics.fill(path, with: shading)
+                if highlight > 0 { outlines.append((path, tone, highlight)) }
+                graphics.fill(path, with: .color(tone.color.opacity(opacity)))
             } else {
                 graphics.fill(path, with: .color(SpacePalette.groupColor.opacity(opacity)))
             }
         }
 
-        // The slice under the pointer glows softly in its own color, with a fine light edge — it stands
-        // out without moving, covering its neighbors or wearing a dark outline.
+        // The slice under the pointer: a fine edge in a deeper shade of its own color. It stands out without
+        // moving, glowing or covering its neighbors.
         for outline in outlines {
             let tone = outline.tone
-            // On light backgrounds a light glow vanishes: use a deeper shade of the slice's own color there.
-            let glowColor = dark
-                ? tone.color.opacity(0.75 * outline.strength)
-                : Color(hue: tone.hue, saturation: min(tone.saturation * 1.2, 1), brightness: tone.brightness * 0.72)
-                    .opacity(0.5 * outline.strength)
-            var glow = graphics
-            glow.addFilter(.shadow(color: glowColor, radius: dark ? 9 : 10, y: dark ? 0 : 2))
-            glow.fill(outline.path, with: .radialGradient(
-                Gradient(colors: [tone.color, tone.light]),
-                center: rings.center, startRadius: outline.inner, endRadius: outline.outer))
-            // Edge: a fine light line in dark mode; in light mode a mid-tone of the same color — present, not harsh.
             let rim = dark
-                ? Color.white.opacity(0.55 * outline.strength)
-                : Color(hue: tone.hue, saturation: min(tone.saturation * 1.25, 1), brightness: tone.brightness * 0.82)
-                    .opacity(0.75 * outline.strength)
-            graphics.stroke(outline.path, with: .color(rim), lineWidth: dark ? 1.25 : 1.5)
+                ? Color.white.opacity(0.6 * outline.strength)
+                : Color(hue: tone.hue, saturation: min(tone.saturation * 1.5, 1), brightness: tone.brightness * 0.7)
+                    .opacity(0.85 * outline.strength)
+            graphics.stroke(outline.path, with: .color(rim), lineWidth: 1.25)
         }
     }
 

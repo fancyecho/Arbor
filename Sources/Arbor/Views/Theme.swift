@@ -475,6 +475,40 @@ struct CapsuleButtonStyle: ButtonStyle {
     }
 }
 
+/// A quiet secondary action inside a card: a neutral capsule the height of a compact prominent button, so a
+/// row of actions reads as one set. (Glass is kept for controls that float; these sit on content.)
+struct ChipButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        ChipBody(configuration: configuration)
+    }
+
+    private struct ChipBody: View {
+        let configuration: Configuration
+        @Environment(\.isEnabled) private var isEnabled
+        @State private var hovering = false
+
+        var body: some View {
+            configuration.label
+                .labelStyle(.titleAndIcon)
+                .font(.system(size: 11.5, weight: .medium))
+                .foregroundStyle(Color.primary)
+                .lineLimit(1)
+                .padding(.horizontal, 11)
+                .frame(height: 24)
+                .background(Capsule().fill(Color.primary.opacity(configuration.isPressed ? 0.1 : hovering && isEnabled ? 0.075 : 0.05)))
+                .overlay(Capsule().strokeBorder(Surface.hairline, lineWidth: 0.75))
+                .opacity(isEnabled ? 1 : 0.4)
+                .contentShape(Capsule())
+                .onHover { hovering = $0 }
+                .animation(.easeOut(duration: 0.12), value: hovering)
+        }
+    }
+}
+
+extension ButtonStyle where Self == ChipButtonStyle {
+    static var chip: ChipButtonStyle { ChipButtonStyle() }
+}
+
 /// Text links in the workspace color (the system's link style is always blue).
 struct TintLinkStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
