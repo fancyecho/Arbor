@@ -30,8 +30,42 @@ struct ExternalApp: Hashable, Identifiable {
         .init(name: L("文本编辑"), bundleID: "com.apple.TextEdit"),
     ]
 
+    static let systemArchiverBundleID = "com.apple.archiveutility"
+
+    static var archiveUtilityURL: URL? {
+        NSWorkspace.shared.urlForApplication(withBundleIdentifier: systemArchiverBundleID)
+            ?? {
+                let fallback = URL(fileURLWithPath: "/System/Library/CoreServices/Applications/Archive Utility.app")
+                return FileManager.default.fileExists(atPath: fallback.path) ? fallback : nil
+            }()
+    }
+
+    static let archivers: [ExternalApp] = [
+        .init(name: "Keka", bundleID: "com.aone.keka"),
+        .init(name: "Keka", bundleID: "com.aone.keka.macappstore"),
+        .init(name: "BetterZip", bundleID: "com.macitbetter.betterzip"),
+        .init(name: "MacZip", bundleID: "com.aibasis.MacZip"),
+        .init(name: "eZip", bundleID: "com.eZip.mac"),
+        .init(name: "The Unarchiver", bundleID: "cx.c3.theunarchiver"),
+        .init(name: "PeaZip", bundleID: "com.peazip.peazip"),
+        .init(name: L("归档实用工具"), bundleID: systemArchiverBundleID),
+    ]
+
     static var installedTerminals: [ExternalApp] { terminals.filter(\.isInstalled) }
     static var installedEditors: [ExternalApp] { editors.filter(\.isInstalled) }
+
+    /// Installed archivers, deduplicated by resolved app path (e.g. Keka standalone vs App Store).
+    static var installedArchivers: [ExternalApp] {
+        var seen = Set<String>()
+        var result: [ExternalApp] = []
+        for app in archivers {
+            let resolved = app.bundleID == systemArchiverBundleID ? archiveUtilityURL : app.url
+            guard let resolved else { continue }
+            let path = resolved.standardizedFileURL.path
+            if seen.insert(path).inserted { result.append(app) }
+        }
+        return result
+    }
 }
 
 /// A user-defined shell command run on the selection, e.g. `zip -r 归档.zip $FILES`.

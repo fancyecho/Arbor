@@ -53,6 +53,12 @@ struct SpaceView: View {
             open(selectionNode(in: scan))
             return .handled
         }
+        .onKeyPress(.tab) {
+            workspace.focusNextPane()
+            return .handled
+        }
+        .onKeyPress(.downArrow) { stepSelection(1, in: scan); return .handled }
+        .onKeyPress(.upArrow) { stepSelection(-1, in: scan); return .handled }
     }
 
     static func isVolumeRoot(_ url: URL) -> Bool {
@@ -241,6 +247,15 @@ struct SpaceView: View {
     private func selectionNode(in scan: SpaceScan?) -> (SpaceNode, SpaceScan)? {
         guard let scan, let url = tab.selection.first, let node = scan.node(for: url) else { return nil }
         return (node, scan)
+    }
+
+    private func stepSelection(_ delta: Int, in scan: SpaceScan?) {
+        guard let scan, let root = scan.node(for: tab.url), listMode != .devCaches else { return }
+        let items = rows(for: root, hidden: nil, revision: scan.revision).filter(\.isItem)
+        guard !items.isEmpty else { return }
+        let current = items.firstIndex { tab.selection.contains(scan.url(of: $0)) }
+        let next = current.map { min(max($0 + delta, 0), items.count - 1) } ?? 0
+        select(items[next], in: scan)
     }
 
     private func rescan(_ scan: SpaceScan, node: SpaceNode) {

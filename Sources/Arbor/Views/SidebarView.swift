@@ -30,7 +30,7 @@ struct SidebarView: View {
         List {
             Section(isExpanded: expanded("favorites")) {
                 ForEach(Array(store.favorites.enumerated()), id: \.element.id) { index, favorite in
-                    row(Place(name: favorite.name, url: favorite.url, symbol: favorite.symbol), dimmed: !favorite.exists) {
+                    row(Place(name: favorite.name, url: favorite.url, symbol: favorite.symbol), dimmed: !store.pathExists(favorite.path)) {
                         Divider()
                         Button(L("从边栏中移除"), systemImage: "minus.circle") { store.removeFavorite(favorite) }
                     }
@@ -186,7 +186,8 @@ struct SidebarView: View {
         // Dropping *onto* a row moves/copies files into that folder.
         .dropDestination(for: URL.self) { urls, _ in
             springLoader.cancel()
-            FileOperationQueue.shared.transfer(urls, to: place.url) { _, error in workspace.report(error) }
+            let copy = NSEvent.modifierFlags.contains(.option)
+            FileOperationQueue.shared.transfer(urls, to: place.url, forceCopy: copy) { _, error in workspace.report(error) }
             return true
         } isTargeted: { targeted in
             // Holding a drag over a place opens it in the active pane, like Finder's sidebar.
@@ -243,7 +244,7 @@ struct SidebarView: View {
     private var recentPlaces: [Place] {
         let shown = Set(store.favorites.map(\.path) + volumes.volumes.map { $0.url.standardizedFileURL.path })
         return store.recents
-            .filter { !shown.contains($0) && FileManager.default.fileExists(atPath: $0) }
+            .filter { !shown.contains($0) && store.pathExists($0) }
             .prefix(6)
             .map { path in
                 let url = URL(fileURLWithPath: path)

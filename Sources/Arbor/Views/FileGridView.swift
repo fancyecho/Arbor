@@ -12,6 +12,10 @@ struct FileGridView: View {
     let isActive: Bool
 
     @State private var anchor: URL?
+    @State private var cursor: URL?
+    /// Type-to-select buffer (matches Finder's incremental prefix jump).
+    @State private var typeBuffer = ""
+    @State private var lastTypeTime = Date.distantPast
     /// Drag-selecting: where the rectangle started and where the pointer is, in the grid's coordinates.
     @State private var marquee: (start: CGPoint, end: CGPoint)?
     /// The selection the rectangle adds to (⌘/⇧ held) and whether this drag began on a file (then it isn't ours).
@@ -22,17 +26,71 @@ struct FileGridView: View {
     @State private var width: CGFloat = 600
     @FocusState private var focused: Bool
 
-    private static let cellWidth: CGFloat = 108
+    private var iconSize: CGFloat { CGFloat(AppSettings.shared.gridIconSize) }
+    private var cellWidth: CGFloat { iconSize + 44 }
+    private var cellHeight: CGFloat { iconSize + 52 }
     private static let spacing: CGFloat = 8
-    private var columnCount: Int { max(1, Int((width - 24 + Self.spacing) / (Self.cellWidth + Self.spacing))) }
+    private var columnCount: Int { max(1, Int((width - 24 + Self.spacing) / (cellWidth + Self.spacing))) }
+    private var isActiveHighlight: Bool { isActive || workspace.paneCount == 1 }
 
     var body: some View {
         // The outer GeometryReader measures the space we are offered (not the content), so the
         // column count used for arrow-key navigation always matches the adaptive grid below.
         GeometryReader { geometry in
+            gridScroll(minHeight: geometry.size.height)
+                .onAppear { width = geometry.size.width }
+                .onChange(of: geometry.size.width) { _, newWidth in width = newWidth }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            workspace.activate(pane)
+            tab.selection = []
+            focused = true
+        }
+        .contextMenu {
+            MenuEntriesView(sections: ContextMenuBuilder.sections(workspace: workspace, tab: tab, selected: [], includeOpenWith: true))
+        }
+        .dropDestination(for: URL.self) { urls, _ in
+            let copy = NSEvent.modifierFlags.contains(.option)
+            FileOperationQueue.shared.transfer(urls, to: tab.url, forceCopy: copy) { results, error in
+                workspace.report(error)
+                tab.reload(selecting: Set(results))
+            }
+            return true
+        }
+        .focusable()
+        .focusEffectDisabled()
+        .focused($focused)
+        .onChange(of: focused) { _, isFocused in if isFocused { workspace.activate(pane) } }
+        .onChange(of: workspace.focusToken) { _, _ in if isActive, tab.renamingURL == nil { focused = true } }
+        .onAppear { if isActive, tab.renamingURL == nil { focused = true } }
+        .onKeyPress(.space) { workspace.quickLook(); return .handled }
+        .onKeyPress(.return) { workspace.rename(); return .handled }
+        .onKeyPress(.tab) { workspace.focusNextPane(); return .handled }
+        .onKeyPress(.escape) {
+            if !tab.filter.isEmpty { tab.filter = "" } else { tab.selection = [] }
+            return .handled
+        }
+        .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow], phases: [.down, .repeat]) { press in
+            let extend = press.modifiers.contains(.shift)
+            switch press.key {
+            case .leftArrow: return move(by: -1, extend: extend)
+            case .rightArrow: return move(by: 1, extend: extend)
+            case .upArrow: return moveVertically(-1, extend: extend)
+            case .downArrow: return moveVertically(1, extend: extend)
+            default: return .ignored
+            }
+        }
+        .onKeyPress(characters: .alphanumerics.union(.punctuationCharacters), phases: .down) { press in
+            handleTypeSelect(press)
+        }
+        .onDisappear { springLoader.cancel() }
+    }
+
+    private func gridScroll(minHeight: CGFloat) -> some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: Self.cellWidth, maximum: Self.cellWidth), spacing: Self.spacing)],
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: cellWidth, maximum: cellWidth), spacing: Self.spacing)],
                           alignment: .leading, spacing: 10) {
                     if showsGroups {
                         ForEach(groups, id: \.id) { group in
@@ -49,7 +107,7 @@ struct FileGridView: View {
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 // Blank space below the files takes part in drag-selecting too.
-                .frame(minHeight: geometry.size.height, alignment: .top)
+                .frame(minHeight: minHeight, alignment: .top)
                 .contentShape(Rectangle())
                 .coordinateSpace(name: Self.space)
                 .gesture(marqueeGesture)
@@ -64,45 +122,18 @@ struct FileGridView: View {
                 QuickLookController.shared.selectionChanged(items.filter { selection.contains($0.url) }.map(\.url))
             }
         }
-        .onAppear { width = geometry.size.width }
-        .onChange(of: geometry.size.width) { _, newWidth in width = newWidth }
-        }
-        .contentShape(Rectangle())
-        .onTapGesture {
-            workspace.activate(pane)
-            tab.selection = []
-            focused = true
-        }
-        .contextMenu {
-            MenuEntriesView(sections: ContextMenuBuilder.sections(workspace: workspace, tab: tab, selected: [], includeOpenWith: false))
-        }
-        .dropDestination(for: URL.self) { urls, _ in
-            FileOperationQueue.shared.transfer(urls, to: tab.url) { results, error in
-                workspace.report(error)
-                tab.reload(selecting: Set(results))
-            }
-            return true
-        }
-        .focusable()
-        .focusEffectDisabled()
-        .focused($focused)
-        .onChange(of: focused) { _, isFocused in if isFocused { workspace.activate(pane) } }
-        .onChange(of: workspace.focusToken) { _, _ in if isActive { focused = true } }
-        .onAppear { if isActive { focused = true } }
-        .onKeyPress(.space) { workspace.quickLook(); return .handled }
-        .onKeyPress(.return) { workspace.rename(); return .handled }
-        .onKeyPress(.tab) { workspace.focusNextPane(); return .handled }
-        .onKeyPress(.leftArrow) { move(by: -1) }
-        .onKeyPress(.rightArrow) { move(by: 1) }
-        .onKeyPress(.upArrow) { moveVertically(-1) }
-        .onKeyPress(.downArrow) { moveVertically(1) }
-        .onDisappear { springLoader.cancel() }
     }
 
     private func cell(for item: FileItem) -> some View {
-                GridCell(
+        let isCut = FileClipboard.shared.activeCutPaths.contains(item.url.standardizedFileURL.path)
+        return GridCell(
                     item: item,
+                    iconSize: iconSize,
+                    cellWidth: cellWidth,
+                    cellHeight: cellHeight,
                     isSelected: tab.selection.contains(item.url),
+                    isActivePane: isActiveHighlight,
+                    isCut: isCut,
                     isRenaming: tab.renamingURL == item.url,
                     mark: tab.compareMarks[item.name],
                     commitRename: { name in
@@ -113,12 +144,17 @@ struct FileGridView: View {
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.space)) } action: { frames.byURL[item.url] = $0 }
                 .gesture(TapGesture(count: 2).onEnded {
                     workspace.activate(pane)
-                    workspace.openSelection([item.url])
+                    if NSEvent.modifierFlags.contains(.command),
+                       let folder = item.isNavigable ? item.url : TabState.resolvedDirectory(item.url) {
+                        workspace.openInNewTab(folder)
+                    } else {
+                        workspace.openSelection([item.url])
+                    }
                 })
                 .simultaneousGesture(TapGesture().onEnded { click(item) })
                 .contextMenu {
                     MenuEntriesView(sections: ContextMenuBuilder.sections(
-                        workspace: workspace, tab: tab, selected: menuTargets(for: item), includeOpenWith: false))
+                        workspace: workspace, tab: tab, selected: menuTargets(for: item), includeOpenWith: true))
                 }
                 .draggable(item.url) {
                     Label(item.name, systemImage: item.isDirectory ? "folder" : "doc")
@@ -126,7 +162,8 @@ struct FileGridView: View {
                 .dropDestination(for: URL.self) { urls, _ in
                     guard item.isNavigable else { return false }
                     springLoader.cancel()
-                    FileOperationQueue.shared.transfer(urls.filter { !$0.isSameFile(as: item.url) }, to: item.url) { _, error in
+                    let copy = NSEvent.modifierFlags.contains(.option)
+                    FileOperationQueue.shared.transfer(urls.filter { !$0.isSameFile(as: item.url) }, to: item.url, forceCopy: copy) { _, error in
                         workspace.report(error)
                     }
                     return true
@@ -209,29 +246,34 @@ struct FileGridView: View {
         if flags.contains(.command) {
             if tab.selection.contains(item.url) { tab.selection.remove(item.url) } else { tab.selection.insert(item.url) }
             anchor = item.url
+            cursor = item.url
         } else if flags.contains(.shift), let anchor, let from = items.firstIndex(where: { $0.url == anchor }),
                   let to = items.firstIndex(where: { $0.url == item.url }) {
             tab.selection = Set(items[min(from, to)...max(from, to)].map(\.url))
+            cursor = item.url
         } else {
             tab.selection = [item.url]
             anchor = item.url
+            cursor = item.url
         }
     }
 
-    private func move(by step: Int) -> KeyPress.Result {
+    private func move(by step: Int, extend: Bool = false) -> KeyPress.Result {
         guard !items.isEmpty else { return .ignored }
-        let current = items.lastIndex { tab.selection.contains($0.url) }
-        let next = current.map { min(max($0 + step, 0), items.count - 1) } ?? 0
-        tab.selection = [items[next].url]
-        anchor = items[next].url
+        let currentIndex = cursor.flatMap { url in items.firstIndex { $0.url == url } }
+            ?? items.lastIndex { tab.selection.contains($0.url) }
+        let next = currentIndex.map { min(max($0 + step, 0), items.count - 1) } ?? 0
+        selectTarget(at: next, extend: extend)
         return .handled
     }
 
     /// ↑/↓: the nearest item in the row above or below. With groups, rows don't line up across a
     /// header, so this goes by where the cells actually are instead of counting columns.
-    private func moveVertically(_ direction: Int) -> KeyPress.Result {
-        guard showsGroups, let current = items.last(where: { tab.selection.contains($0.url) }),
-              let from = frames.byURL[current.url] else { return move(by: direction * columnCount) }
+    private func moveVertically(_ direction: Int, extend: Bool = false) -> KeyPress.Result {
+        let currentItem = cursor.flatMap { url in items.first { $0.url == url } }
+            ?? items.last(where: { tab.selection.contains($0.url) })
+        guard showsGroups, let current = currentItem,
+              let from = frames.byURL[current.url] else { return move(by: direction * columnCount, extend: extend) }
         let candidates = items.compactMap { item -> (FileItem, CGRect)? in
             guard let frame = frames.byURL[item.url] else { return nil }
             let ahead = direction > 0 ? frame.minY > from.maxY - 1 : frame.maxY < from.minY + 1
@@ -241,10 +283,57 @@ struct FileGridView: View {
             return .handled
         }
         let row = candidates.filter { abs($0.1.midY - rowY) < 1 }
-        guard let next = row.min(by: { abs($0.1.midX - from.midX) < abs($1.1.midX - from.midX) })?.0 else { return .handled }
-        tab.selection = [next.url]
-        anchor = next.url
+        guard let next = row.min(by: { abs($0.1.midX - from.midX) < abs($1.1.midX - from.midX) })?.0,
+              let nextIndex = items.firstIndex(where: { $0.url == next.url }) else { return .handled }
+        selectTarget(at: nextIndex, extend: extend)
         return .handled
+    }
+
+    private func selectTarget(at next: Int, extend: Bool) {
+        let target = items[next].url
+        if extend, let anchor, let from = items.firstIndex(where: { $0.url == anchor }) {
+            tab.selection = Set(items[min(from, next)...max(from, next)].map(\.url))
+            cursor = target
+        } else {
+            tab.selection = [target]
+            anchor = target
+            cursor = target
+        }
+    }
+
+    /// Type-to-select & ⌘+/⌘-/⌘0 icon zoom in the icon grid.
+    private func handleTypeSelect(_ press: KeyPress) -> KeyPress.Result {
+        guard tab.renamingURL == nil else { return .ignored }
+        if press.modifiers == .command {
+            let settings = AppSettings.shared
+            switch press.characters {
+            case "=", "+":
+                settings.gridIconSize = min(128, settings.gridIconSize + 12)
+                return .handled
+            case "-":
+                settings.gridIconSize = max(48, settings.gridIconSize - 12)
+                return .handled
+            case "0":
+                settings.gridIconSize = 64
+                return .handled
+            default:
+                return .ignored
+            }
+        }
+        guard press.modifiers.isDisjoint(with: [.command, .control, .option]),
+              !press.characters.isEmpty else { return .ignored }
+        let now = Date()
+        if now.timeIntervalSince(lastTypeTime) > 0.85 { typeBuffer = "" }
+        lastTypeTime = now
+        typeBuffer += press.characters.lowercased()
+        if let match = items.first(where: { $0.name.lowercased().hasPrefix(typeBuffer) })
+            ?? items.first(where: { $0.name.lowercased().contains(typeBuffer) }) {
+            tab.selection = [match.url]
+            anchor = match.url
+            cursor = match.url
+            return .handled
+        }
+        return .ignored
     }
 
     private func menuTargets(for item: FileItem) -> [FileItem] {
@@ -278,12 +367,19 @@ private final class CellFrames {
 private struct GridCell: View {
     @Environment(\.arborTint) private var tint
     let item: FileItem
+    let iconSize: CGFloat
+    let cellWidth: CGFloat
+    let cellHeight: CGFloat
     let isSelected: Bool
+    let isActivePane: Bool
+    let isCut: Bool
     let isRenaming: Bool
     let mark: CompareStatus?
     let commitRename: (String?) -> Void
 
     @State private var draft = ""
+    @State private var didGainFocus = false
+    @State private var submitted = false
     @FocusState private var fieldFocused: Bool
 
     private var git: GitMark? {
@@ -291,20 +387,25 @@ private struct GridCell: View {
         return GitIndex.shared.mark(for: item.url, isFolder: item.isDirectory)
     }
 
+    private var selectionFill: Color {
+        guard isSelected else { return .clear }
+        return isActivePane ? tint.opacity(0.16) : Color.primary.opacity(0.08)
+    }
+
     var body: some View {
         VStack(spacing: 4) {
             Group {
                 if item.isNavigable {
-                    FolderCoverView(item: item, size: 64)
+                    FolderCoverView(item: item, size: iconSize)
                 } else {
-                    ThumbnailView(item: item, size: 64)
+                    ThumbnailView(item: item, size: iconSize)
                 }
             }
-                .frame(width: 72, height: 72)
+                .frame(width: iconSize + 8, height: iconSize + 8)
                 .padding(4)
                 .background(
                     RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .fill(isSelected ? tint.opacity(0.16) : .clear))
+                        .fill(selectionFill))
 
             if isRenaming {
                 TextField("", text: $draft)
@@ -312,11 +413,28 @@ private struct GridCell: View {
                     .font(.system(size: 11))
                     .multilineTextAlignment(.center)
                     .focused($fieldFocused)
-                    .onSubmit { commitRename(draft) }
-                    .onExitCommand { commitRename(nil) }
+                    .onSubmit {
+                        submitted = true
+                        commitRename(draft)
+                    }
+                    .onExitCommand {
+                        submitted = true
+                        commitRename(nil)
+                    }
+                    .onChange(of: fieldFocused) { _, nowFocused in
+                        if nowFocused {
+                            didGainFocus = true
+                            selectBaseName(item: item)
+                        } else if didGainFocus, !submitted, isRenaming {
+                            submitted = true
+                            commitRename(draft)
+                        }
+                    }
                     .onAppear {
                         draft = item.name
-                        DispatchQueue.main.async { fieldFocused = true }
+                        didGainFocus = false
+                        submitted = false
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.04) { fieldFocused = true }
                     }
             } else {
                 Text(item.name)
@@ -329,7 +447,7 @@ private struct GridCell: View {
                     .padding(.vertical, 1)
                     .background(
                         RoundedRectangle(cornerRadius: 4, style: .continuous)
-                            .fill(isSelected ? tint.opacity(0.18) : .clear))
+                            .fill(isSelected ? (isActivePane ? tint.opacity(0.18) : Color.primary.opacity(0.08)) : .clear))
             }
         }
         .overlay(alignment: .bottom) {
@@ -367,10 +485,20 @@ private struct GridCell: View {
                 EmptyView()
             }
         }
-        .frame(width: 108, height: 116, alignment: .top)
-        .opacity(item.isHidden || git?.change == .ignored ? 0.55 : 1)
+        .frame(width: cellWidth, height: cellHeight, alignment: .top)
+        .opacity(isCut ? 0.42 : (item.isHidden || git?.change == .ignored ? 0.55 : 1))
         .contentShape(Rectangle())
         .help(item.name)
+    }
+
+    private func selectBaseName(item: FileItem) {
+        DispatchQueue.main.async {
+            guard let editor = NSApp.keyWindow?.firstResponder as? NSTextView else { return }
+            let name = editor.string as NSString
+            let ext = (name.pathExtension as NSString).length
+            let length = (ext > 0 && !item.isDirectory) ? name.length - ext - 1 : name.length
+            editor.selectedRange = NSRange(location: 0, length: max(length, 0))
+        }
     }
 }
 

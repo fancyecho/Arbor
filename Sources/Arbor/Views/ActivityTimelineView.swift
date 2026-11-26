@@ -50,6 +50,7 @@ struct ActivityTimelineView: View {
         }
         .onKeyPress(.downArrow) { step(1, in: shown); return .handled }
         .onKeyPress(.upArrow) { step(-1, in: shown); return .handled }
+        .onKeyPress(.tab) { workspace.focusNextPane(); return .handled }
         .task(id: "\(scope.path)|\(range.rawValue)") { model.start(scope: scope, range: range) }
         .onDisappear { model.stop() }
     }
@@ -203,7 +204,7 @@ struct ActivityTimelineView: View {
             Image(systemName: event.symbol)
                 .font(.system(size: 13))
                 .foregroundStyle(.white, color(for: event))
-                .background(Circle().fill(Color(nsColor: .windowBackgroundColor)).padding(-1.5))
+                .background(Circle().fill(Surface.card(active: isActive || workspace.paneCount == 1)).padding(-1.5))
                 .padding(.top, 13)
         }
         .frame(width: 20)

@@ -357,7 +357,7 @@
 "随时呼出 Arbor" = "Summon Arbor from anywhere";
 "系统" = "System";
 "在任何应用中按下快捷键即可显示 / 隐藏 Arbor。显示菜单栏图标时，关闭所有窗口后 Arbor 会继续在后台运行。\n访达右键菜单「服务 › 在 Arbor 中打开」可在系统设置 › 键盘 › 键盘快捷键 › 服务中开启。" = "Press the shortcut in any app to show or hide Arbor. With the menu bar icon shown, Arbor keeps running in the background after its last window closes.\nFinder's Services › Open in Arbor can be turned on in System Settings › Keyboard › Keyboard Shortcuts › Services.";
-"“在终端中打开”（⌥⌘T）和“在编辑器中打开”（⌥⌘E）使用这里选择的应用。只列出已安装的应用。" = "“Open in Terminal” (⌥⌘T) and “Open in Editor” (⌥⌘E) use the apps chosen here. Only installed apps are listed.";
+"“在终端中打开”（⌥⌘T）、“在编辑器中打开”（⌥⌘E）和右键压缩 / 解压使用这里选择的应用。已安装 Keka 时默认优先使用 Keka，未安装外部工具时使用系统 ZIP 压缩与归档实用工具。" = "“Open in Terminal” (⌥⌘T), “Open in Editor” (⌥⌘E), and Compress / Extract use the apps chosen here. Keka is preferred when installed; otherwise macOS ZIP compression and Archive Utility are used.";
 "新命令" = "New Command";
 "运行方式" = "Run";
 "命令（zsh）" = "Command (zsh)";
@@ -371,8 +371,7 @@
 "无" = "None";
 "恢复默认" = "Restore Default";
 "移除快捷键" = "Remove Shortcut";
-"在右键菜单中显示" = "Show in the context menu";
-"打开、剪切、拷贝、粘贴、重命名、移到废纸篓始终显示。工具栏可在窗口工具栏上右键 › 自定义工具栏。" = "Open, Cut, Copy, Paste, Rename and Move to Trash always show. To change the toolbar, right-click it › Customize Toolbar.";
+"当前已显示 %@ / %@ 个可选项。打开、剪切、拷贝、粘贴、重命名、移到废纸篓始终显示。工具栏可在窗口工具栏上右键 › 自定义工具栏。" = "Showing %1$@ of %2$@ optional items. Open, Cut, Copy, Paste, Rename and Move to Trash always show. To change the toolbar, right-click it › Customize Toolbar.";
 "（无输出）" = "(no output)";
 "拷贝输出" = "Copy Output";
 "完成" = "Done";
@@ -815,3 +814,42 @@
 "AI 结果：%@" = "AI results: %@";
 "AI 结果：%@\n临时标签页（虚线边框），下次的结果会替换它；双击保留" = "AI results: %@\nA temporary tab (dashed edge): the next results replace it. Double-click to keep it.";
 "保留这个标签页" = "Keep This Tab";
+
+/* Archiver (Keka), Open With & Context Menu Settings */
+"压缩" = "Compress";
+"压缩失败（退出码 %@）。" = "Compression failed (exit code %@).";
+"归档" = "Archive";
+"其他…" = "Other…";
+"压缩为 ZIP" = "Compress as ZIP";
+"打开与预览" = "Open & Preview";
+"文件与压缩" = "Files & Archives";
+"标准" = "Standard";
+"用 %@ 压缩" = "Compress with %@";
+"用 %@ 解压" = "Extract with %@";
+"精简" = "Minimal";
+"解压" = "Extract";
+"路径与外部应用" = "Paths & Apps";
+"进阶工具" = "Advanced Tools";
+"重命名与 AI" = "Rename & AI";
+"压缩与解压" = "Compress & Extract";
+"归档实用工具" = "Archive Utility";
+"自定义右键菜单…" = "Customize Context Menu…";
+"搜索菜单项" = "Search menu items";
+"选择应用程序" = "Choose Application";
+
+/* P1 & P2: Toast HUD, Grid Zoom, Column Resize & Stash Shelf */
+"已拷贝 %@ 项" = "Copied %@ {item|items}";
+"已剪切 %@ 项" = "Cut %@ {item|items}";
+"已撤销：%@" = "Undid: %@";
+"已重做：%@" = "Redid: %@";
+"已拷贝路径" = "Copied path";
+"已拷贝 %@ 个路径" = "Copied %@ {path|paths}";
+"已加入暂存架（%@ 项）" = "Added %@ {item|items} to Shelf";
+"已交给 %@ 压缩" = "Sent to %@ to compress";
+"已压缩为 %@" = "Compressed to %@";
+"已交给 %@ 解压" = "Sent to %@ to extract";
+"调整图标大小" = "Adjust icon size";
+"拖动调整列宽，双击恢复默认" = "Drag to resize columns, double-click to reset";
+"按住拖动可把暂存架里的全部项目一次拖给其他应用或文件夹" = "Drag to drop every item on the shelf onto another app or folder at once";
+"压缩全部项目" = "Compress all items";
+"拖出全部" = "Drag all";

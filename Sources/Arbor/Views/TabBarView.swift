@@ -179,6 +179,11 @@ private struct TabChip: View {
         // Double-clicking a preview tab keeps it (the next results get a tab of their own).
         .onTapGesture(count: 2) { if isPreview { keep() } }
         .simultaneousGesture(TapGesture().onEnded { select() })
+        .background {
+            MiddleClickCatcher {
+                if !tab.isPinned, pane.tabs.count > 1 { workspace.close(tab, in: pane) }
+            }
+        }
         .onHover { inside in withAnimation(.easeOut(duration: 0.12)) { hovering = inside } }
         .help(help)
         .contextMenu { menu }
@@ -345,8 +350,9 @@ private struct TabChipDropDelegate: DropDelegate {
             return true
         }
         let destination = target.url
+        let copy = NSEvent.modifierFlags.contains(.option)
         loadFileURLs(info.itemProviders(for: [.fileURL])) { urls in
-            FileOperationQueue.shared.transfer(urls, to: destination) { _, error in workspace.report(error) }
+            FileOperationQueue.shared.transfer(urls, to: destination, forceCopy: copy) { _, error in workspace.report(error) }
         }
         return true
     }
@@ -413,5 +419,44 @@ struct PaneCloseButton: View {
         .onHover { hovering = $0 }
         .animation(.easeOut(duration: 0.12), value: hovering)
         .help(L("关闭这个窗格"))
+    }
+}
+
+/// Catches middle-clicks on a SwiftUI view without interfering with left/right clicks or dragging.
+private struct MiddleClickCatcher: NSViewRepresentable {
+    let onMiddleClick: () -> Void
+
+    func makeNSView(context: Context) -> CatcherView {
+        let view = CatcherView()
+        view.onMiddleClick = onMiddleClick
+        return view
+    }
+
+    func updateNSView(_ view: CatcherView, context: Context) {
+        view.onMiddleClick = onMiddleClick
+    }
+
+    final class CatcherView: NSView {
+        var onMiddleClick: (() -> Void)?
+        private var monitor: Any?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if let monitor { NSEvent.removeMonitor(monitor); self.monitor = nil }
+            guard window != nil else { return }
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .otherMouseDown) { [weak self] event in
+                guard let self, event.buttonNumber == 2, event.window === self.window else { return event }
+                let point = self.convert(event.locationInWindow, from: nil)
+                if self.bounds.contains(point) {
+                    self.onMiddleClick?()
+                    return nil
+                }
+                return event
+            }
+        }
+
+        deinit {
+            if let monitor { NSEvent.removeMonitor(monitor) }
+        }
     }
 }

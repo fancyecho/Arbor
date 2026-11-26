@@ -118,7 +118,6 @@ final class TabState: Identifiable {
     /// Bumps when an expanded folder's contents load or change.
     private(set) var treeRevision = 0
     @ObservationIgnored private var childItems: [String: [FileItem]] = [:]
-    @ObservationIgnored private var childWatchers: [String: DirectoryWatcher] = [:]
     /// Folders expanded with ⌥: their subfolders expand too as they load.
     @ObservationIgnored private var expandingAll: Set<String> = []
     /// Selection remembered for items inside expanded folders, applied once those folders load.
@@ -282,7 +281,6 @@ final class TabState: Identifiable {
             expandedFolders.subtract(removed)
             for gone in removed {
                 childItems[gone] = nil
-                childWatchers[gone] = nil
                 expandingAll.remove(gone)
             }
             // Like Finder, selected items inside a folder that closes are deselected.
@@ -300,9 +298,6 @@ final class TabState: Identifiable {
     private func loadChildren(_ path: String) {
         let generation = treeGeneration
         let folder = URL(fileURLWithPath: path, isDirectory: true)
-        if childWatchers[path] == nil {
-            childWatchers[path] = DirectoryWatcher(url: folder) { [weak self] in self?.loadChildren(path) }
-        }
         DirectoryLoader.load(folder) { [weak self] result in
             guard let self, generation == self.treeGeneration, self.expandedFolders.contains(path) else { return }
             let loaded = (try? result.get()) ?? []
@@ -332,7 +327,6 @@ final class TabState: Identifiable {
     private func resetTree(expanding paths: Set<String> = []) {
         treeGeneration += 1
         childItems = [:]
-        childWatchers = [:]
         expandingAll = []
         pendingTreeSelection = []
         expandedFolders = []
@@ -420,6 +414,13 @@ final class TabState: Identifiable {
         load(selecting: wanted)
     }
 
+    /// Ensures a newly created item in `url` will be visible (clears active filters or search views).
+    func prepareForNewItem() {
+        if !filter.isEmpty { filter = "" }
+        if tagQuery != nil { showTag(nil) }
+        if aiQuery != nil { showAIQuery(nil) }
+    }
+
     // MARK: Loading
 
     /// Reloads the current directory, keeping the selection (or replacing it with `selecting`).
@@ -481,9 +482,9 @@ final class TabState: Identifiable {
         isSearching = true
         if let ai = aiQuery, ai.predicate == nil {
             let urls = ai.urls
-            DispatchQueue.global(qos: .userInitiated).async {
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
                 let found = urls.filter { FileManager.default.fileExists(atPath: $0.path) }.map(FileItem.init(url:))
-                DispatchQueue.main.async { [weak self] in
+                DispatchQueue.main.async {
                     guard let self, self.aiQuery != nil else { return }
                     self.searchResults = found
                     self.itemsGeneration += 1
@@ -603,8 +604,18 @@ final class TabState: Identifiable {
     }
 
     private func startWatching() {
-        watcher = DirectoryWatcher(url: url) { [weak self] in
-            self?.reload()
+        watcher?.stop()
+        let rootPath = url.standardizedFileURL.resolvingSymlinksInPath().path
+        // One FSEventStream per tab covers the root folder and every expanded subfolder inside it.
+        watcher = DirectoryWatcher(root: url) { [weak self] changed in
+            guard let self else { return }
+            if changed.contains(rootPath) { self.reload() }
+            for expanded in self.expandedFolders {
+                let resolved = URL(fileURLWithPath: expanded).standardizedFileURL.resolvingSymlinksInPath().path
+                if changed.contains(expanded) || changed.contains(resolved) {
+                    self.loadChildren(expanded)
+                }
+            }
         }
         if gitLease == nil || GitIndex.shared.repoRoot(for: url) != gitLease?.root {
             gitLease = GitIndex.shared.track(url)

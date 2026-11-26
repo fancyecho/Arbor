@@ -58,7 +58,7 @@ struct PaneHeader: View {
             if tab.aiQuery != nil {
                 AIResultsLine(tab: tab)
             } else {
-                PathBarView(workspace: workspace, tab: tab, parentsOnly: true)
+                PathBarView(workspace: workspace, tab: tab, parentsOnly: true, isActive: isActive)
             }
             HStack(spacing: 9) {
                 icon
@@ -209,7 +209,9 @@ struct TabContentView: View {
                     groups: tab.displayGroups, showsGroups: tab.showsGroups, showsTree: tab.showsTree,
                     expandedFolders: tab.expandedFolders, treeRevision: tab.treeRevision,
                     lastOpenedRevision: LastOpenedIndex.shared.revision, gitRevision: GitIndex.shared.revision,
-                    transfers: FileOperationQueue.shared.inFlight(in: tab.url))
+                    transfers: FileOperationQueue.shared.inFlight(in: tab.url),
+                    cutPaths: FileClipboard.shared.activeCutPaths,
+                    multiPane: workspace.paneCount > 1)
             case .grid:
                 // While the pane shrinks, icons keep the final arrangement instead of re-wrapping every frame.
                 FileGridView(workspace: workspace, pane: pane, tab: tab, items: tab.visibleRows,
@@ -227,7 +229,9 @@ struct TabContentView: View {
                         focusToken: workspace.focusToken, plannedWidth: plannedWidth, spaceRevision: SpaceIndex.shared.revision,
                         groups: tab.displayGroups, showsGroups: tab.showsGroups, showsTree: false,
                         lastOpenedRevision: LastOpenedIndex.shared.revision, gitRevision: GitIndex.shared.revision,
-                    transfers: FileOperationQueue.shared.inFlight(in: tab.url))
+                        transfers: FileOperationQueue.shared.inFlight(in: tab.url),
+                        cutPaths: FileClipboard.shared.activeCutPaths,
+                        multiPane: workspace.paneCount > 1)
                 } else {
                     ColumnBrowserView(workspace: workspace, pane: pane, tab: tab, items: items, isActive: isActive)
                 }
@@ -313,6 +317,9 @@ struct StatusBarView: View {
                 Text(L("·  已过滤")).foregroundStyle(tint)
             }
             Spacer(minLength: 8)
+            if tab.viewMode == .grid {
+                GridZoomSlider()
+            }
             if let freeSpace {
                 // Narrow panes drop the label, then the figure, instead of truncating it to "可用 73.…".
                 ViewThatFits {
@@ -336,5 +343,26 @@ struct StatusBarView: View {
             let values = try? tab.url.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
             freeSpace = values?.volumeAvailableCapacityForImportantUsage
         }
+    }
+}
+
+/// Compact icon-size zoom control shown in the status bar while browsing in Icon view.
+private struct GridZoomSlider: View {
+    @Bindable private var settings = AppSettings.shared
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "square.grid.3x3")
+                .font(.system(size: 9))
+                .foregroundStyle(.tertiary)
+            Slider(value: $settings.gridIconSize, in: 48...128, step: 4)
+                .controlSize(.mini)
+                .frame(width: 68)
+                .help(L("调整图标大小"))
+            Image(systemName: "square.grid.2x2")
+                .font(.system(size: 9.5))
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.trailing, 6)
     }
 }

@@ -85,7 +85,11 @@ final class TransferEngine: @unchecked Sendable {
         var result = TransferResult()
         let jobs = plannedJobs()
         progress.itemsTotal = jobs.count
-        progress.totalBytes = jobs.reduce(0) { $0 + ($1.needsCopy ? Self.byteCount(of: $1.source) : 0) }
+        progress.totalBytes = jobs.reduce(0) { $0 + ($1.needsCopy ? Self.byteCount(of: $1.source, cancelFlag: cancelFlag) : 0) }
+        if cancelFlag.isCancelled {
+            result.cancelled = true
+            return result
+        }
         flush(force: true)
 
         for (index, job) in jobs.enumerated() {
@@ -230,8 +234,14 @@ final class TransferEngine: @unchecked Sendable {
         }
         try copyWithProgress(source, to: target)
         if kind == .move {
-            try fm.removeItem(at: source)
-            undo.insert(.move(from: target, to: source), at: 0)
+            do {
+                try fm.removeItem(at: source)
+                undo.insert(.move(from: target, to: source), at: 0)
+            } catch {
+                // Don't leave a silent duplicate behind if the source couldn't be removed.
+                try? fm.removeItem(at: target)
+                throw error
+            }
         } else {
             undo.insert(.trash(target), at: 0)
         }
@@ -247,7 +257,8 @@ final class TransferEngine: @unchecked Sendable {
 
     private func copyWithProgress(_ source: URL, to target: URL) throws {
         let baseline = progress.completedBytes
-        let expected = Self.byteCount(of: source)
+        let expected = Self.byteCount(of: source, cancelFlag: cancelFlag)
+        if cancelFlag.isCancelled { throw TransferStop.stopped }
         progress.currentTarget = target.standardizedFileURL.path
         progress.currentFraction = 0
         flush(force: true)
@@ -301,7 +312,7 @@ final class TransferEngine: @unchecked Sendable {
     }
 
     /// Logical size of a file or folder tree, matching what copyfile reports as copied.
-    static func byteCount(of url: URL) -> Int64 {
+    static func byteCount(of url: URL, cancelFlag: CancelFlag? = nil) -> Int64 {
         let keys: Set<URLResourceKey> = [.fileSizeKey, .isRegularFileKey, .isDirectoryKey, .isSymbolicLinkKey]
         let values = try? url.resourceValues(forKeys: keys)
         if values?.isDirectory != true || values?.isSymbolicLink == true { return Int64(values?.fileSize ?? 0) }
@@ -309,6 +320,7 @@ final class TransferEngine: @unchecked Sendable {
         let enumerator = FileManager.default.enumerator(at: url, includingPropertiesForKeys: Array(keys), options: [],
                                                         errorHandler: { _, _ in true })
         while let next = enumerator?.nextObject() as? URL {
+            if cancelFlag?.isCancelled == true { return total }
             let child = try? next.resourceValues(forKeys: keys)
             if child?.isRegularFile == true { total += Int64(child?.fileSize ?? 0) }
         }

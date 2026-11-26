@@ -96,6 +96,14 @@ struct WorkspaceWindow: View {
             }
         }
         .overlay { WindowGlowOverlay(active: workspace.aiThinking) }
+        .overlay(alignment: .bottom) {
+            if let toast = workspace.toast, !workspace.showAIBar {
+                ToastHUD(toast: toast)
+                    .padding(.bottom, 42)
+                    .transition(.move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.94)))
+            }
+        }
+        .animation(.snappy(duration: 0.24), value: workspace.toast)
         .animation(.snappy(duration: 0.3), value: workspace.showAIBar)
         .sheet(isPresented: aiRenameBinding) {
             AIRenameSheet(workspace: workspace, urls: workspace.aiRenameTargets ?? [])
@@ -115,6 +123,7 @@ struct WorkspaceWindow: View {
         .onAppear {
             WorkspaceRegistry.shared.windowAppeared(workspace)
             AppActions.openWindow = openWindow
+            AppActions.openSettings = openSettings
         }
         .onReceive(NotificationCenter.default.publisher(for: Snapshot.demoRequest)) { note in
             let fm = FileManager.default
@@ -684,5 +693,28 @@ private struct TransparentToolbar: ViewModifier {
         } else {
             content
         }
+    }
+}
+
+/// Non-blocking floating feedback capsule for silent keyboard & menu actions.
+private struct ToastHUD: View {
+    let toast: ToastMessage
+    @Environment(\.arborTint) private var tint
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Image(systemName: toast.symbol)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(tint)
+            Text(toast.text)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 32)
+        .floatingGlass(in: Capsule(), fallback: .regularMaterial)
+        .shadow(color: .black.opacity(0.16), radius: 14, y: 5)
+        .allowsHitTesting(false)
     }
 }

@@ -14,6 +14,7 @@ struct ColumnBrowserView: View {
     @FocusState private var focused: Bool
     @State private var springLoader = SpringLoader()
 
+    private var columnWidth: CGFloat { CGFloat(AppSettings.shared.columnWidth) }
     private var selectedItems: [FileItem] { items.filter { tab.selection.contains($0.url) } }
 
     var body: some View {
@@ -24,23 +25,23 @@ struct ColumnBrowserView: View {
             ScrollView(.horizontal) {
                 HStack(spacing: 0) {
                     ForEach(Array(parts.dropLast().enumerated()), id: \.element.url) { index, part in
-                        DirectoryColumn(url: part.url, highlighted: parts[index + 1].url) { picked in
+                        DirectoryColumn(url: part.url, highlighted: parts[index + 1].url, width: columnWidth) { picked in
                             if TabState.resolvedDirectory(picked) != nil {
                                 tab.navigate(to: picked)
                             } else {
                                 tab.navigate(to: part.url, select: picked)
                             }
                         }
-                        Divider()
+                        ColumnDivider()
                     }
 
                     currentColumn
                         .id("current")
-                    Divider()
+                    ColumnDivider()
 
                     if let single {
                         if let folder = single.isNavigable ? single.url : TabState.resolvedDirectory(single.url) {
-                            DirectoryColumn(url: folder, highlighted: nil) { picked in
+                            DirectoryColumn(url: folder, highlighted: nil, width: columnWidth) { picked in
                                 tab.navigate(to: folder, select: picked)
                             }
                             .id("next")
@@ -67,6 +68,7 @@ struct ColumnBrowserView: View {
         }
         .onKeyPress(.space) { workspace.quickLook(); return .handled }
         .onKeyPress(.return) { workspace.rename(); return .handled }
+        .onKeyPress(.tab) { workspace.focusNextPane(); return .handled }
     }
 
     private func scrollToEnd(_ proxy: ScrollViewProxy) {
@@ -89,7 +91,8 @@ struct ColumnBrowserView: View {
                 .dropDestination(for: URL.self) { urls, _ in
                     guard item.isNavigable else { return false }
                     springLoader.cancel()
-                    FileOperationQueue.shared.transfer(urls.filter { !$0.isSameFile(as: item.url) }, to: item.url) { _, error in
+                    let copy = NSEvent.modifierFlags.contains(.option)
+                    FileOperationQueue.shared.transfer(urls.filter { !$0.isSameFile(as: item.url) }, to: item.url, forceCopy: copy) { _, error in
                         workspace.report(error)
                     }
                     return true
@@ -110,7 +113,7 @@ struct ColumnBrowserView: View {
         }
         .contextMenu(forSelectionType: URL.self) { urls in
             MenuEntriesView(sections: ContextMenuBuilder.sections(
-                workspace: workspace, tab: tab, selected: items.filter { urls.contains($0.url) }, includeOpenWith: false))
+                workspace: workspace, tab: tab, selected: items.filter { urls.contains($0.url) }, includeOpenWith: true))
         } primaryAction: { urls in
             workspace.activate(pane)
             workspace.openSelection(items.filter { urls.contains($0.url) }.map(\.url))
@@ -131,8 +134,8 @@ struct ColumnBrowserView: View {
             }
         }
         .focused($focused)
-        .frame(width: 240)
-        .onChange(of: workspace.focusToken, initial: true) { _, _ in if isActive { focused = true } }
+        .frame(width: columnWidth)
+        .onChange(of: workspace.focusToken, initial: true) { _, _ in if isActive, tab.renamingURL == nil { focused = true } }
         .onChange(of: focused) { _, isFocused in if isFocused { workspace.activate(pane) } }
         .onChange(of: tab.selection) { _, selection in
             QuickLookController.shared.selectionChanged(items.filter { selection.contains($0.url) }.map(\.url))
@@ -145,6 +148,7 @@ private struct DirectoryColumn: View {
     @Environment(\.arborTint) private var tint
     let url: URL
     let highlighted: URL?
+    let width: CGFloat
     let pick: (URL) -> Void
 
     @State private var items: [FileItem] = []
@@ -177,7 +181,7 @@ private struct DirectoryColumn: View {
         }
         .listStyle(.inset)
         .scrollContentBackground(.hidden)
-        .frame(width: 220)
+        .frame(width: width)
         .task(id: "\(url.path)|\(AppSettings.shared.showHidden)") {
             let showHidden = AppSettings.shared.showHidden
             let loaded: [FileItem] = await withCheckedContinuation { continuation in
@@ -195,6 +199,8 @@ private struct ColumnRow: View {
     @Environment(\.arborTintNSColor) private var tint
 
     @State private var draft = ""
+    @State private var didGainFocus = false
+    @State private var submitted = false
     @FocusState private var fieldFocused: Bool
 
     var body: some View {
@@ -203,11 +209,34 @@ private struct ColumnRow: View {
             if isRenaming {
                 TextField("", text: $draft)
                     .focused($fieldFocused)
-                    .onSubmit { commit(draft) }
-                    .onExitCommand { commit(nil) }
+                    .onSubmit {
+                        submitted = true
+                        commit(draft)
+                    }
+                    .onExitCommand {
+                        submitted = true
+                        commit(nil)
+                    }
+                    .onChange(of: fieldFocused) { _, nowFocused in
+                        if nowFocused {
+                            didGainFocus = true
+                            DispatchQueue.main.async {
+                                guard let editor = NSApp.keyWindow?.firstResponder as? NSTextView else { return }
+                                let name = editor.string as NSString
+                                let ext = (name.pathExtension as NSString).length
+                                let length = (ext > 0 && !item.isDirectory) ? name.length - ext - 1 : name.length
+                                editor.selectedRange = NSRange(location: 0, length: max(length, 0))
+                            }
+                        } else if didGainFocus, !submitted, isRenaming {
+                            submitted = true
+                            commit(draft)
+                        }
+                    }
                     .onAppear {
                         draft = item.name
-                        DispatchQueue.main.async { fieldFocused = true }
+                        didGainFocus = false
+                        submitted = false
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.04) { fieldFocused = true }
                     }
             } else {
                 Text(item.name).lineLimit(1).truncationMode(.middle)
@@ -217,7 +246,56 @@ private struct ColumnRow: View {
                 Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold)).foregroundStyle(.tertiary)
             }
         }
-        .opacity(item.isHidden ? 0.55 : 1)
+        .opacity(FileClipboard.shared.activeCutPaths.contains(item.url.standardizedFileURL.path) ? 0.42 : (item.isHidden ? 0.55 : 1))
+    }
+}
+
+/// Draggable column divider: drag to adjust column width across all columns, double-click to reset.
+private struct ColumnDivider: View {
+    @State private var startWidth: Double?
+    @State private var hovering = false
+    @State private var cursorPushed = false
+
+    var body: some View {
+        Rectangle()
+            .fill(Color.clear)
+            .frame(width: 7)
+            .overlay {
+                Rectangle()
+                    .fill(hovering ? Color.primary.opacity(0.22) : Surface.divider)
+                    .frame(width: hovering ? 2 : 1)
+            }
+            .contentShape(Rectangle())
+            .onHover { inside in
+                hovering = inside
+                updateCursor()
+            }
+            .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                .onChanged { value in
+                    let base = startWidth ?? AppSettings.shared.columnWidth
+                    if startWidth == nil { startWidth = base }
+                    AppSettings.shared.columnWidth = min(max(base + value.translation.width, 160), 420)
+                }
+                .onEnded { _ in
+                    startWidth = nil
+                    updateCursor()
+                })
+            .onTapGesture(count: 2) { AppSettings.shared.columnWidth = 230 }
+            .onDisappear {
+                if cursorPushed { NSCursor.pop(); cursorPushed = false }
+            }
+            .help(L("拖动调整列宽，双击恢复默认"))
+    }
+
+    private func updateCursor() {
+        let want = hovering || startWidth != nil
+        if want, !cursorPushed {
+            NSCursor.resizeLeftRight.push()
+            cursorPushed = true
+        } else if !want, cursorPushed {
+            NSCursor.pop()
+            cursorPushed = false
+        }
     }
 }
 

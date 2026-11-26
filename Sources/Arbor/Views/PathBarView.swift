@@ -6,6 +6,7 @@ struct PathBarView: View {
     let tab: TabState
     /// Under the pane's title: the folders above the current one, small (the title names the current one).
     var parentsOnly = false
+    var isActive = true
 
     @State private var isEditing = false
     @State private var draft = ""
@@ -30,6 +31,9 @@ struct PathBarView: View {
         .frame(height: parentsOnly ? 20 : 30)
         .frame(maxWidth: .infinity, alignment: .leading)
         .onChange(of: tab.url) { _, _ in isEditing = false }
+        .onChange(of: workspace.pathEditToken) { _, _ in
+            if isActive { beginEditing() }
+        }
     }
 
     /// The full path when it fits; otherwise the middle folders collapse into a "…" menu, so the
@@ -112,7 +116,7 @@ struct PathBarView: View {
     }
 
     private func crumb(_ part: Part, isLast: Bool, compact: Bool = false) -> some View {
-        Crumb(part: part, isLast: isLast && !parentsOnly, compact: compact, small: parentsOnly) {
+        Crumb(part: part, isLast: isLast && !parentsOnly, compact: compact, small: parentsOnly, workspace: workspace) {
             tab.navigate(to: part.url)
             workspace.focusToken += 1
         }
@@ -194,20 +198,23 @@ private struct Crumb: View {
     let isLast: Bool
     var compact = false
     var small = false
+    let workspace: WorkspaceState
     let action: () -> Void
 
+    @Environment(\.arborTint) private var tint
     @State private var hovering = false
+    @State private var dropTargeted = false
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 4) {
                 if let symbol = part.symbol {
-                    Image(systemName: symbol).font(.system(size: small ? 9.5 : 10)).foregroundStyle(.secondary)
+                    Image(systemName: symbol).font(.system(size: small ? 9.5 : 10)).foregroundStyle(dropTargeted ? tint : .secondary)
                 }
                 if !compact {
                     Text(part.name)
                         .font(.system(size: small ? 11.5 : 12, weight: isLast ? .semibold : .regular))
-                        .foregroundStyle(isLast ? .primary : .secondary)
+                        .foregroundStyle(dropTargeted ? AnyShapeStyle(tint) : AnyShapeStyle(isLast ? .primary : .secondary))
                         .lineLimit(1)
                 }
             }
@@ -215,15 +222,21 @@ private struct Crumb: View {
             .padding(.vertical, small ? 2 : 3)
             .background(
                 RoundedRectangle(cornerRadius: 5, style: .continuous)
-                    .fill(Color.primary.opacity(hovering ? 0.07 : 0)))
+                    .fill(dropTargeted ? tint.opacity(0.16) : Color.primary.opacity(hovering ? 0.07 : 0)))
+            .overlay(
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .strokeBorder(dropTargeted ? tint.opacity(0.6) : .clear, lineWidth: 1))
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
         .help(part.url.path)
         .dropDestination(for: URL.self) { urls, _ in
-            FileOperationQueue.shared.transfer(urls, to: part.url) { _, _ in }
+            let copy = NSEvent.modifierFlags.contains(.option)
+            FileOperationQueue.shared.transfer(urls, to: part.url, forceCopy: copy) { _, error in
+                workspace.report(error)
+            }
             return true
-        }
+        } isTargeted: { dropTargeted = $0 }
     }
 }
 

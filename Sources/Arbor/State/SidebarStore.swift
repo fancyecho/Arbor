@@ -19,10 +19,13 @@ final class SidebarStore {
 
     private(set) var favorites: [FavoriteItem]
     private(set) var recents: [String]
+    /// Paths verified off the main thread so SidebarView never blocks UI rendering on disk / network I/O.
+    private(set) var missingPaths: Set<String> = []
     private var collapsed: Set<String>
 
     private let defaults = AppDefaults.store
     private let recentLimit = 12
+    @ObservationIgnored private var validationGeneration = 0
 
     private init() {
         if let data = defaults.data(forKey: "sidebar.favorites"),
@@ -33,6 +36,33 @@ final class SidebarStore {
         }
         recents = defaults.stringArray(forKey: "sidebar.recents") ?? []
         collapsed = Set(defaults.stringArray(forKey: "sidebar.collapsed") ?? [])
+        refreshAvailability()
+    }
+
+    func pathExists(_ path: String) -> Bool {
+        !missingPaths.contains(path)
+    }
+
+    /// Re-checks favorites and recent folders on a background queue (never blocking the main thread).
+    func refreshAvailability() {
+        validationGeneration += 1
+        let generation = validationGeneration
+        let paths = Array(Set(favorites.map(\.path) + recents))
+        guard !paths.isEmpty else {
+            if !missingPaths.isEmpty { missingPaths = [] }
+            return
+        }
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let fm = FileManager.default
+            var missing = Set<String>()
+            for path in paths where !fm.fileExists(atPath: path) {
+                missing.insert(path)
+            }
+            DispatchQueue.main.async {
+                guard let self, self.validationGeneration == generation else { return }
+                if self.missingPaths != missing { self.missingPaths = missing }
+            }
+        }
     }
 
     static var defaultFavorites: [FavoriteItem] {
@@ -77,6 +107,7 @@ final class SidebarStore {
 
     private func saveFavorites() {
         defaults.set(try? JSONEncoder().encode(favorites), forKey: "sidebar.favorites")
+        refreshAvailability()
     }
 
     // MARK: Recents
@@ -87,6 +118,7 @@ final class SidebarStore {
         recents.removeAll { $0 == path }
         recents.insert(path, at: 0)
         if recents.count > recentLimit { recents.removeLast(recents.count - recentLimit) }
+        missingPaths.remove(path)
         defaults.set(recents, forKey: "sidebar.recents")
     }
 

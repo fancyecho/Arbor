@@ -48,7 +48,8 @@ struct AICommandBar: View {
                     suggestionGrid.transition(.opacity.combined(with: .offset(y: 6)))
                 }
             }
-            .frame(width: 600)
+            .frame(maxWidth: 600)
+            .padding(.horizontal, 16)
             .padding(.bottom, 34)
             .offset(y: appeared ? 0 : 18)
             .opacity(appeared ? 1 : 0)

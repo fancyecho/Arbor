@@ -32,6 +32,11 @@ final class AppSettings {
         didSet { defaults.set(editorBundleID, forKey: "editorBundleID") }
     }
 
+    /// Archiver used by "压缩 / 解压" (defaults to Keka when installed, otherwise system Archive Utility).
+    var archiverBundleID: String {
+        didSet { defaults.set(archiverBundleID, forKey: "archiverBundleID") }
+    }
+
     enum Appearance: String, CaseIterable, Identifiable {
         case system, light, dark
         var id: Self { self }
@@ -142,9 +147,9 @@ final class AppSettings {
     func loadAIKey() {
         guard !Snapshot.isActive else { return }
         let account = aiProvider.rawValue
-        DispatchQueue.global(qos: .userInitiated).async {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let stored = AIKeychain.load(account: account)
-            DispatchQueue.main.async { [weak self] in
+            DispatchQueue.main.async {
                 guard let self, self.aiProvider.rawValue == account else { return }
                 self.loadingKey = true
                 self.aiAPIKey = stored
@@ -186,6 +191,16 @@ final class AppSettings {
         didSet { defaults.set(listColumns, forKey: "listColumns") }
     }
 
+    /// Icon thumbnail size in the icon grid view (48…128 pt).
+    var gridIconSize: Double {
+        didSet { defaults.set(gridIconSize, forKey: "gridIconSize") }
+    }
+
+    /// Column width in the column browser view (160…420 pt).
+    var columnWidth: Double {
+        didSet { defaults.set(columnWidth, forKey: "columnWidth") }
+    }
+
     /// Menu shortcuts changed in Settings, by command title; cleared ones have no shortcut.
     var customShortcuts: [String: ShortcutSpec] {
         didSet { defaults.set(try? JSONEncoder().encode(customShortcuts), forKey: "customShortcuts") }
@@ -217,6 +232,8 @@ final class AppSettings {
         terminalBundleID = defaults.string(forKey: "terminalBundleID") ?? "com.apple.Terminal"
         editorBundleID = defaults.string(forKey: "editorBundleID")
             ?? ExternalApp.installedEditors.first?.bundleID ?? "com.apple.TextEdit"
+        archiverBundleID = defaults.string(forKey: "archiverBundleID")
+            ?? ExternalApp.installedArchivers.first?.bundleID ?? ExternalApp.systemArchiverBundleID
         defaults.register(defaults: ["showMenuBarIcon": true, "showListInsights": false, "autoSaveWorkspaces": true,
                                      "showGitStatus": true, "tintedFolders": true])
         tintedFolders = defaults.bool(forKey: "tintedFolders")
@@ -239,10 +256,18 @@ final class AppSettings {
         hotKey = defaults.bool(forKey: "hotKeyCleared") ? nil
             : defaults.data(forKey: "hotKey").flatMap { try? JSONDecoder().decode(HotKeySpec.self, from: $0) } ?? .defaultValue
         listColumns = defaults.stringArray(forKey: "listColumns") ?? ["modified", "size", "kind"]
+        let savedGrid = defaults.double(forKey: "gridIconSize")
+        gridIconSize = savedGrid >= 48 && savedGrid <= 128 ? savedGrid : 64
+        let savedColumn = defaults.double(forKey: "columnWidth")
+        columnWidth = savedColumn >= 160 && savedColumn <= 420 ? savedColumn : 230
         customShortcuts = defaults.data(forKey: "customShortcuts")
             .flatMap { try? JSONDecoder().decode([String: ShortcutSpec].self, from: $0) } ?? [:]
         clearedShortcuts = Set(defaults.stringArray(forKey: "clearedShortcuts") ?? [])
-        hiddenMenuItems = Set(defaults.stringArray(forKey: "hiddenMenuItems") ?? [])
+        if let savedHidden = defaults.stringArray(forKey: "hiddenMenuItems") {
+            hiddenMenuItems = Set(savedHidden)
+        } else {
+            hiddenMenuItems = ContextMenuBuilder.MenuPreset.standard.hiddenItems
+        }
         colorRules = defaults.data(forKey: "colorRules")
             .flatMap { try? JSONDecoder().decode([ColorRule].self, from: $0) } ?? [
                 ColorRule(pattern: "*.zip; *.rar; *.7z; *.dmg", tint: .purple, enabled: false),
@@ -263,5 +288,15 @@ final class AppSettings {
 
     var editorName: String {
         ExternalApp.editors.first { $0.bundleID == editorBundleID }?.name ?? L("编辑器")
+    }
+
+    var archiverURL: URL? {
+        if archiverBundleID == ExternalApp.systemArchiverBundleID { return ExternalApp.archiveUtilityURL }
+        return ExternalApp.archivers.first { $0.bundleID == archiverBundleID }?.url
+            ?? NSWorkspace.shared.urlForApplication(withBundleIdentifier: archiverBundleID)
+    }
+
+    var archiverName: String {
+        ExternalApp.archivers.first { $0.bundleID == archiverBundleID }?.name ?? L("归档实用工具")
     }
 }

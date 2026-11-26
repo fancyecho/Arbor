@@ -46,16 +46,25 @@ final class CancelFlag: @unchecked Sendable {
     func cancel() { lock.withLock { cancelled = true } }
 }
 
-/// Watches a single directory with FSEvents and calls `onChange` (coalesced, on main)
-/// only for changes to its direct children — not for the whole subtree.
+/// Watches a directory subtree with one FSEventStream and delivers coalesced directory changes on main.
 final class DirectoryWatcher {
     private var stream: FSEventStreamRef?
     private let path: String
-    private let onChange: () -> Void
+    private let onDirectoriesChanged: (Set<String>) -> Void
 
-    init?(url: URL, onChange: @escaping () -> Void) {
+    /// Convenience initializer that fires only when `url`'s direct children change.
+    convenience init?(url: URL, onChange: @escaping () -> Void) {
+        let watched = url.standardizedFileURL.resolvingSymlinksInPath().path
+        self.init(root: url) { changed in
+            if changed.contains(watched) { onChange() }
+        }
+    }
+
+    /// Watches `root` and its whole subtree with a single FSEventStream, reporting the standardized paths
+    /// of directories whose direct children (or the directory itself) changed.
+    init?(root url: URL, onDirectoriesChanged: @escaping (Set<String>) -> Void) {
         self.path = url.standardizedFileURL.resolvingSymlinksInPath().path
-        self.onChange = onChange
+        self.onDirectoriesChanged = onDirectoriesChanged
         var context = FSEventStreamContext(
             version: 0, info: nil, retain: nil, release: nil, copyDescription: nil)
         context.info = Unmanaged.passUnretained(self).toOpaque()
@@ -64,11 +73,12 @@ final class DirectoryWatcher {
             guard let info else { return }
             let watcher = Unmanaged<DirectoryWatcher>.fromOpaque(info).takeUnretainedValue()
             let changed = unsafeBitCast(paths, to: NSArray.self) as? [String] ?? []
-            let relevant = changed.prefix(count).contains { changedPath in
-                changedPath == watcher.path
-                    || (changedPath as NSString).deletingLastPathComponent == watcher.path
+            var affected = Set<String>()
+            for changedPath in changed.prefix(count) {
+                affected.insert(changedPath)
+                affected.insert((changedPath as NSString).deletingLastPathComponent)
             }
-            if relevant { watcher.onChange() }
+            if !affected.isEmpty { watcher.onDirectoriesChanged(affected) }
         }
 
         let flags = kFSEventStreamCreateFlagFileEvents | kFSEventStreamCreateFlagUseCFTypes
@@ -84,10 +94,15 @@ final class DirectoryWatcher {
         FSEventStreamStart(stream)
     }
 
-    deinit {
+    func stop() {
         guard let stream else { return }
+        self.stream = nil
         FSEventStreamStop(stream)
         FSEventStreamInvalidate(stream)
         FSEventStreamRelease(stream)
+    }
+
+    deinit {
+        stop()
     }
 }

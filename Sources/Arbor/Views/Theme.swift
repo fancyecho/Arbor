@@ -283,6 +283,7 @@ enum FolderIcon {
         if let known = customIcons[path] { return !known }
         // A custom folder icon lives in a hidden "Icon\r" file inside the folder.
         let custom = FileManager.default.fileExists(atPath: path + "/Icon\r")
+        if customIcons.count > 2000 { customIcons.removeAll() }
         customIcons[path] = custom
         return !custom
     }

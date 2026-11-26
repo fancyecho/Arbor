@@ -138,8 +138,11 @@ private struct AppsSettings: View {
                 Picker(L("编辑器"), selection: $settings.editorBundleID) {
                     ForEach(ExternalApp.installedEditors) { appRow($0).tag($0.bundleID) }
                 }
+                Picker(L("压缩与解压"), selection: $settings.archiverBundleID) {
+                    ForEach(ExternalApp.installedArchivers) { appRow($0).tag($0.bundleID) }
+                }
             } footer: {
-                Text(L("“在终端中打开”（⌥⌘T）和“在编辑器中打开”（⌥⌘E）使用这里选择的应用。只列出已安装的应用。"))
+                Text(L("“在终端中打开”（⌥⌘T）、“在编辑器中打开”（⌥⌘E）和右键压缩 / 解压使用这里选择的应用。已安装 Keka 时默认优先使用 Keka，未安装外部工具时使用系统 ZIP 压缩与归档实用工具。"))
                     .foregroundStyle(.secondary)
             }
         }
@@ -147,8 +150,9 @@ private struct AppsSettings: View {
     }
 
     private func appRow(_ app: ExternalApp) -> some View {
-        HStack {
-            if let url = app.url {
+        let resolvedURL = app.bundleID == ExternalApp.systemArchiverBundleID ? ExternalApp.archiveUtilityURL : app.url
+        return HStack {
+            if let url = resolvedURL {
                 Image(nsImage: NSWorkspace.shared.icon(forFile: url.path)).resizable().frame(width: 16, height: 16)
             }
             Text(app.name)
@@ -320,25 +324,68 @@ private struct ShortcutRecorder: View {
 
 private struct MenuSettings: View {
     @Bindable private var settings = AppSettings.shared
+    @State private var query = ""
+
+    private var visibleCount: Int {
+        ContextMenuBuilder.customizable.filter { !settings.hiddenMenuItems.contains($0) }.count
+    }
+
+    private var activePreset: ContextMenuBuilder.MenuPreset? {
+        ContextMenuBuilder.MenuPreset.allCases.first { $0.hiddenItems == settings.hiddenMenuItems }
+    }
 
     var body: some View {
-        Form {
-            Section {
-                ForEach(ContextMenuBuilder.customizable, id: \.self) { title in
-                    Toggle(L(key: title), isOn: Binding(
-                        get: { !settings.hiddenMenuItems.contains(title) },
-                        set: { visible in
-                            if visible { settings.hiddenMenuItems.remove(title) } else { settings.hiddenMenuItems.insert(title) }
-                        }))
+        VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                TextField(L("搜索菜单项"), text: $query)
+                    .textFieldStyle(.roundedBorder)
+                HStack(spacing: 4) {
+                    ForEach(ContextMenuBuilder.MenuPreset.allCases) { preset in
+                        Button(preset.title) {
+                            settings.hiddenMenuItems = preset.hiddenItems
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(activePreset == preset ? .accentColor : nil)
+                    }
                 }
-            } header: {
-                Text(L("在右键菜单中显示"))
-            } footer: {
-                Text(L("打开、剪切、拷贝、粘贴、重命名、移到废纸篓始终显示。工具栏可在窗口工具栏上右键 › 自定义工具栏。"))
-                    .foregroundStyle(.secondary)
             }
+            .padding(.horizontal, 14)
+            .padding(.top, 12)
+            .padding(.bottom, 8)
+
+            Form {
+                ForEach(filteredGroups) { group in
+                    Section(group.title) {
+                        ForEach(group.options) { option in
+                            Toggle(isOn: Binding(
+                                get: { !settings.hiddenMenuItems.contains(option.id) },
+                                set: { visible in
+                                    if visible { settings.hiddenMenuItems.remove(option.id) }
+                                    else { settings.hiddenMenuItems.insert(option.id) }
+                                })) {
+                                Label(L(key: option.id), systemImage: option.symbol)
+                            }
+                        }
+                    }
+                }
+                Section {
+                    EmptyView()
+                } footer: {
+                    Text(L("当前已显示 \(visibleCount) / \(ContextMenuBuilder.customizable.count) 个可选项。打开、剪切、拷贝、粘贴、重命名、移到废纸篓始终显示。工具栏可在窗口工具栏上右键 › 自定义工具栏。"))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .formStyle(.grouped)
         }
-        .formStyle(.grouped)
+    }
+
+    private var filteredGroups: [ContextMenuBuilder.MenuGroup] {
+        let trimmed = query.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return ContextMenuBuilder.optionGroups }
+        return ContextMenuBuilder.optionGroups.compactMap { group in
+            let matches = group.options.filter { Fuzzy.score(trimmed, L(key: $0.id)) != nil }
+            return matches.isEmpty ? nil : ContextMenuBuilder.MenuGroup(id: group.id, title: group.title, options: matches)
+        }
     }
 }
 

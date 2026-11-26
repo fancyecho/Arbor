@@ -8,6 +8,13 @@ import SwiftUI
 enum AppActions {
     /// Captured from SwiftUI so AppKit code can open a new browser window.
     static var openWindow: OpenWindowAction?
+    /// Captured from SwiftUI so commands / palette can jump directly to a Settings tab.
+    static var openSettings: OpenSettingsAction?
+
+    static func openSettingsTab(_ tab: String) {
+        AppSettings.shared.settingsTab = tab
+        openSettings?()
+    }
 
     /// Open browser windows, including minimized ones (closed windows can linger in `NSApp.windows`).
     private static var browserWindows: [NSWindow] {

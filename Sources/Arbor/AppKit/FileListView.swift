@@ -41,6 +41,10 @@ struct FileListView: NSViewRepresentable {
     var gitRevision = 0
     /// Rows being written by a copy or move into this folder, by path: how far along each one is.
     var transfers: [String: Double] = [:]
+    /// Standardized paths currently cut to the clipboard (rendered dimmed).
+    var cutPaths: Set<String> = []
+    /// Whether more than one pane is visible (inactive panes desaturate their selection).
+    var multiPane = false
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -97,6 +101,8 @@ struct FileListView: NSViewRepresentable {
         table.onFocus = { [weak coordinator] in coordinator?.tableDidFocus() }
         table.onDragLeave = { [weak coordinator] in coordinator?.dragLeft() }
         table.onKey = { [weak coordinator] event in coordinator?.handleKey(event) ?? false }
+        table.onMiddleClickRow = { [weak coordinator] row in coordinator?.middleClicked(row: row) }
+        table.onMouseNavigate = { [weak coordinator] step in coordinator?.navigateHistory(step) }
         table.isSelectableRow = { [weak coordinator] row in coordinator?.fileItem(atRow: row) != nil }
 
         let scroll = FileScrollView()
@@ -194,6 +200,8 @@ struct FileListView: NSViewRepresentable {
         /// Folder, filter and search state the rows were built for.
         private var listContext = ""
         private var transfers: [String: Double] = [:]
+        private var cutPaths: Set<String> = []
+        private var isActiveHighlight = true
         private var marks: [String: CompareStatus] = [:]
         private var tint: NSColor = .controlAccentColor
         private var insights = true
@@ -209,7 +217,14 @@ struct FileListView: NSViewRepresentable {
         private var lastFocusToken = -1
         private var editingURL: URL?
         private var renameCancelled = false
+        private var pendingReloadAfterRename = false
         private lazy var springLoader = SpringLoader { [weak self] folder in self?.springOpen(folder) }
+
+        /// True while the user's cursor is actively inside an inline rename field in this table.
+        private var isActivelyEditing: Bool {
+            guard editingURL != nil, let table, let editor = table.window?.firstResponder as? NSText else { return false }
+            return editor.isDescendant(of: table)
+        }
 
         private var workspace: WorkspaceState { parent.workspace }
         private var tab: TabState { parent.tab }
@@ -234,12 +249,33 @@ struct FileListView: NSViewRepresentable {
 
             let tabChanged = tabID != view.tab.id
             let selectionChanged = selectedURLs() != view.selection
-            if tint != view.tint {
+            let activeHighlight = view.isActive || !view.multiPane
+            if tint != view.tint || isActiveHighlight != activeHighlight {
                 tint = view.tint
+                isActiveHighlight = activeHighlight
                 table.tint = view.tint
                 if let scroll = table.enclosingScrollView { SlimScroller.install(on: scroll, tint: view.tint) }
                 table.enumerateAvailableRowViews { rowView, _ in
-                    (rowView as? TintedRowView)?.tint = view.tint
+                    if let tinted = rowView as? TintedRowView {
+                        tinted.tint = view.tint
+                        tinted.isActivePane = activeHighlight
+                    }
+                }
+            }
+            if cutPaths != view.cutPaths {
+                let changedPaths = cutPaths.symmetricDifference(view.cutPaths)
+                cutPaths = view.cutPaths
+                if !isActivelyEditing {
+                    var rowsToReload = IndexSet()
+                    for path in changedPaths {
+                        if let node = nodes["f:" + path] {
+                            let r = table.row(forItem: node)
+                            if r >= 0 { rowsToReload.insert(r) }
+                        }
+                    }
+                    if !rowsToReload.isEmpty {
+                        table.reloadData(forRowIndexes: rowsToReload, columnIndexes: IndexSet(integersIn: 0..<table.numberOfColumns))
+                    }
                 }
             }
             if tabChanged || items != view.items || groups != view.groups || showsGroups != view.showsGroups
@@ -270,20 +306,45 @@ struct FileListView: NSViewRepresentable {
                 rebuild()
                 let sameShape = oldShape.groups == showsGroups && oldShape.tree == showsTree
                     && oldShape.expanded == expanded && oldShape.revision == treeRevision
-                if tabChanged || !sameShape || !sameContext || !animateChanges(from: oldRoots) {
-                    table.reloadData()
+                if !tabChanged && sameContext && isActivelyEditing {
+                    // Never tear down the live inline rename field editor on background git / FSEvents / metadata refreshes.
+                    let sameRows = oldRoots.map(ObjectIdentifier.init) == roots.map(ObjectIdentifier.init)
+                    if sameShape && sameRows {
+                        let editingRow = editingURL.flatMap(row(of:))
+                        var otherRows = IndexSet(integersIn: 0..<table.numberOfRows)
+                        if let editingRow { otherRows.remove(editingRow) }
+                        let allCols = IndexSet(integersIn: 0..<table.numberOfColumns)
+                        if !otherRows.isEmpty {
+                            table.reloadData(forRowIndexes: otherRows, columnIndexes: allCols)
+                        }
+                        if let editingRow {
+                            let nameCol = table.column(withIdentifier: Column.name.identifier)
+                            var nonNameCols = allCols
+                            if nameCol >= 0 { nonNameCols.remove(nameCol) }
+                            if !nonNameCols.isEmpty {
+                                table.reloadData(forRowIndexes: IndexSet(integer: editingRow), columnIndexes: nonNameCols)
+                            }
+                        }
+                    } else {
+                        pendingReloadAfterRename = true
+                    }
+                } else {
+                    let skipAnimation = view.renamingURL != nil
+                    if tabChanged || !sameShape || !sameContext || skipAnimation || !animateChanges(from: oldRoots) {
+                        table.reloadData()
+                    }
+                    syncExpansion(roots)
+                    if desired.contains(Column.lastOpened.rawValue) {
+                        LastOpenedIndex.shared.prefetch(allRowItems().map(\.url), folder: view.showsLocation ? nil : view.tab.url)
+                    }
+                    // Switching tabs returns to where that tab was scrolled.
+                    if tabChanged, !(view.tab.scrollAnchor.map(scrollToTop) ?? false) { table.scroll(.zero) }
+                    applyPendingAnchor(view)
+                    applySelection(view.selection, scrollToFirst: tabChanged || selectionChanged)
                 }
-                syncExpansion(roots)
-                if desired.contains(Column.lastOpened.rawValue) {
-                    LastOpenedIndex.shared.prefetch(allRowItems().map(\.url), folder: view.showsLocation ? nil : view.tab.url)
-                }
-                // Switching tabs returns to where that tab was scrolled.
-                if tabChanged, !(view.tab.scrollAnchor.map(scrollToTop) ?? false) { table.scroll(.zero) }
-                applyPendingAnchor(view)
-                applySelection(view.selection, scrollToFirst: tabChanged || selectionChanged)
             } else {
                 applyPendingAnchor(view)
-                if selectionChanged { applySelection(view.selection, scrollToFirst: true) }
+                if selectionChanged && !isActivelyEditing { applySelection(view.selection, scrollToFirst: true) }
             }
             applyTransfers(view.transfers)
 
@@ -292,15 +353,18 @@ struct FileListView: NSViewRepresentable {
                 table.sortDescriptors = [descriptor]
             }
 
-            if let renaming = view.renamingURL, !(editingURL?.isSameFile(as: renaming) ?? false) {
+            if let renaming = view.renamingURL,
+               !(isActivelyEditing && (editingURL?.isSameFile(as: renaming) ?? false)) {
                 DispatchQueue.main.async { [weak self] in self?.beginRename(renaming) }
             }
 
             if view.isActive, view.focusToken != lastFocusToken {
                 lastFocusToken = view.focusToken
-                DispatchQueue.main.async { [weak table] in
-                    guard let table, let window = table.window, window.firstResponder !== table else { return }
-                    if !(window.firstResponder is NSText) { window.makeFirstResponder(table) }
+                if view.renamingURL == nil && !isActivelyEditing {
+                    DispatchQueue.main.async { [weak table] in
+                        guard let table, let window = table.window, window.firstResponder !== table else { return }
+                        if !(window.firstResponder is NSText) { window.makeFirstResponder(table) }
+                    }
                 }
             }
         }
@@ -551,6 +615,7 @@ struct FileListView: NSViewRepresentable {
             let rowView = (outlineView.makeView(withIdentifier: TintedRowView.identifier, owner: nil) as? TintedRowView) ?? TintedRowView()
             rowView.identifier = TintedRowView.identifier
             rowView.tint = tint
+            rowView.isActivePane = isActiveHighlight
             rowView.progress = (item as? Node)?.item.flatMap { transfers[$0.url.standardizedFileURL.path] }
             return rowView
         }
@@ -569,15 +634,20 @@ struct FileListView: NSViewRepresentable {
             let cell = (outlineView.makeView(withIdentifier: tableColumn.identifier, owner: nil) as? FileCellView)
                 ?? FileCellView(column: column)
             cell.identifier = tableColumn.identifier
+            if column == .name, let editing = editingURL, item.url.isSameFile(as: editing),
+               cell.textField?.currentEditor() != nil {
+                return cell
+            }
             let parentFolder = item.url.deletingLastPathComponent()
             let folderSize = item.isNavigable && column == .size && !parent.showsLocation
                 ? sizes(in: parentFolder)[item.name] : nil
             let mark = node.depth == 0 ? marks[item.name] : nil
             let git = column == .name ? GitIndex.shared.mark(for: item.url, isFolder: item.isDirectory) : nil
+            let isCut = cutPaths.contains(item.url.standardizedFileURL.path)
             cell.configure(item: item, column: column, mark: mark,
                            insight: insights ? CellInsight(maxSize: maxSize, tint: tint) : nil, folderSize: folderSize,
                            lastOpened: column == .lastOpened ? LastOpenedIndex.shared.date(for: item.url) : nil,
-                           git: git, tint: tint)
+                           git: git, tint: tint, isCut: isCut)
             if column == .name { cell.textField?.delegate = self }
             return cell
         }
@@ -639,7 +709,25 @@ struct FileListView: NSViewRepresentable {
         @objc func doubleClicked(_ sender: NSOutlineView) {
             guard let item = fileItem(atRow: sender.clickedRow) else { return }
             workspace.activate(parent.pane)
+            // ⌘ + double-click opens folders in a new tab, like Finder.
+            if NSEvent.modifierFlags.contains(.command),
+               let folder = item.isNavigable ? item.url : TabState.resolvedDirectory(item.url) {
+                workspace.openInNewTab(folder)
+                return
+            }
             workspace.openSelection([item.url])
+        }
+
+        func middleClicked(row: Int) {
+            guard let item = fileItem(atRow: row),
+                  let folder = item.isNavigable ? item.url : TabState.resolvedDirectory(item.url) else { return }
+            workspace.activate(parent.pane)
+            workspace.openInNewTab(folder)
+        }
+
+        func navigateHistory(_ step: Int) {
+            workspace.activate(parent.pane)
+            if step < 0 { tab.goBack() } else { tab.goForward() }
         }
 
         /// Returns true if the key was handled.
@@ -662,24 +750,45 @@ struct FileListView: NSViewRepresentable {
 
         // MARK: Inline rename
 
-        private func beginRename(_ url: URL) {
+        private func beginRename(_ url: URL, attempt: Int = 0) {
+            guard tab.renamingURL?.isSameFile(as: url) == true else { return }
             guard let table, let row = row(of: url), let item = fileItem(atRow: row) else { return }
             let column = table.column(withIdentifier: Column.name.identifier)
-            guard column >= 0, let cell = table.view(atColumn: column, row: row, makeIfNecessary: true) as? FileCellView,
-                  let field = cell.textField else { return }
-            editingURL = url
-            renameCancelled = false
             table.scrollRowToVisible(row)
+            table.layoutSubtreeIfNeeded()
+            guard column >= 0, let cell = table.view(atColumn: column, row: row, makeIfNecessary: true) as? FileCellView,
+                  let field = cell.textField, let window = table.window else {
+                if attempt < 8 {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+                        self?.beginRename(url, attempt: attempt + 1)
+                    }
+                }
+                return
+            }
+            if isActivelyEditing, editingURL?.isSameFile(as: url) == true { return }
             field.isEditable = true
             field.isSelectable = true
             Self.styleEditing(field, tint: tint)
-            table.window?.makeFirstResponder(field)
-            // Select the base name only, like Finder.
-            if let editor = field.currentEditor() {
+            if !window.isKeyWindow { window.makeKeyAndOrderFront(nil) }
+            editingURL = url
+            renameCancelled = false
+            if window.makeFirstResponder(field), let editor = field.currentEditor() {
+                // Select the base name only, like Finder.
                 let name = field.stringValue as NSString
                 let ext = (name.pathExtension as NSString).length
                 let length = (ext > 0 && !item.isDirectory) ? name.length - ext - 1 : name.length
                 editor.selectedRange = NSRange(location: 0, length: max(length, 0))
+            } else {
+                // Context menu or toolbar menu may still be dismissing; clean up and retry shortly.
+                editingURL = nil
+                field.isEditable = false
+                field.isSelectable = false
+                Self.styleEditing(field, tint: nil)
+                if attempt < 8 {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+                        self?.beginRename(url, attempt: attempt + 1)
+                    }
+                }
             }
         }
 
@@ -727,6 +836,11 @@ struct FileListView: NSViewRepresentable {
             }
             if table?.window?.firstResponder == nil || table?.window?.firstResponder === table?.window {
                 table?.window?.makeFirstResponder(table)
+            }
+            if pendingReloadAfterRename {
+                pendingReloadAfterRename = false
+                table?.reloadData()
+                syncExpansion(roots)
             }
         }
 
@@ -1090,6 +1204,8 @@ final class FileTableView: NSOutlineView {
     var paneID: UUID?
     var onFocus: (() -> Void)?
     var onDragLeave: (() -> Void)?
+    var onMiddleClickRow: ((Int) -> Void)?
+    var onMouseNavigate: ((Int) -> Void)?
     /// False for group headers: they never join the selection, however it's made (click, ⇧, marquee).
     var isSelectableRow: ((Int) -> Bool)?
 
@@ -1134,6 +1250,27 @@ final class FileTableView: NSOutlineView {
         let accepted = super.becomeFirstResponder()
         if accepted { onFocus?() }
         return accepted
+    }
+
+    override func otherMouseDown(with event: NSEvent) {
+        switch event.buttonNumber {
+        case 2: // Middle click on a folder opens it in a new tab.
+            let point = convert(event.locationInWindow, from: nil)
+            let hitRow = row(at: point)
+            if hitRow >= 0 {
+                onMiddleClickRow?(hitRow)
+                return
+            }
+        case 3: // Mouse back side button
+            onMouseNavigate?(-1)
+            return
+        case 4: // Mouse forward side button
+            onMouseNavigate?(1)
+            return
+        default:
+            break
+        }
+        super.otherMouseDown(with: event)
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -1439,7 +1576,8 @@ final class FileCellView: NSTableCellView {
 
     /// `folderSize` comes from a space scan (folders have no size of their own on disk).
     func configure(item: FileItem, column: FileListView.Column, mark: CompareStatus? = nil, insight: CellInsight? = nil,
-                   folderSize: Int64? = nil, lastOpened: Date? = nil, git: GitMark? = nil, tint: NSColor? = nil) {
+                   folderSize: Int64? = nil, lastOpened: Date? = nil, git: GitMark? = nil, tint: NSColor? = nil,
+                   isCut: Bool = false) {
         if let sizeBar {
             let size = item.isNavigable ? folderSize : item.size
             let fraction = Double(size ?? 0) / Double(insight?.maxSize ?? 1)
@@ -1511,7 +1649,7 @@ final class FileCellView: NSTableCellView {
         case .tags:
             label.stringValue = item.tagNames.joined(separator: L("、"))
         }
-        alphaValue = item.isHidden || git?.change == .ignored ? 0.55 : 1
+        alphaValue = isCut ? 0.42 : (item.isHidden || git?.change == .ignored ? 0.55 : 1)
     }
 }
 
@@ -1577,6 +1715,11 @@ final class TintedRowView: NSTableRowView {
 
     var tint: NSColor = .controlAccentColor {
         didSet { if tint != oldValue { needsDisplay = true } }
+    }
+
+    /// Inactive panes in multi-pane mode use a neutral gray wash so focus is obvious at a glance.
+    var isActivePane = true {
+        didSet { if isActivePane != oldValue { needsDisplay = true } }
     }
 
     /// A copy into this row is under way: the row fills up with the workspace color as it goes.
@@ -1648,8 +1791,12 @@ final class TintedRowView: NSTableRowView {
     override func drawSelection(in dirtyRect: NSRect) {
         let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         let rect = bounds.insetBy(dx: 2.5, dy: 1.5)
-        let alpha: CGFloat = isEmphasized ? (dark ? 0.34 : 0.17) : (dark ? 0.17 : 0.08)
-        tint.withAlphaComponent(alpha).setFill()
+        if isActivePane {
+            let alpha: CGFloat = isEmphasized ? (dark ? 0.34 : 0.17) : (dark ? 0.22 : 0.11)
+            tint.withAlphaComponent(alpha).setFill()
+        } else {
+            NSColor.labelColor.withAlphaComponent(dark ? 0.13 : 0.075).setFill()
+        }
         NSBezierPath(roundedRect: rect, xRadius: 7, yRadius: 7).fill()
     }
 

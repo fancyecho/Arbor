@@ -1,4 +1,5 @@
 import AppKit
+import UniformTypeIdentifiers
 
 /// User-facing commands. Menu items, context menus and keyboard handlers all funnel through here
 /// so behaviour is identical no matter how a command is invoked.
@@ -65,12 +66,14 @@ extension WorkspaceState {
         let items = targets(urls)
         guard !items.isEmpty else { return }
         FileClipboard.shared.write(items, cut: false)
+        showToast(L("已拷贝 \(items.count) 项"), symbol: "doc.on.doc")
     }
 
     func cut(_ urls: [URL]? = nil) {
         let items = targets(urls)
         guard !items.isEmpty else { return }
         FileClipboard.shared.write(items, cut: true)
+        showToast(L("已剪切 \(items.count) 项"), symbol: "scissors")
     }
 
     var canPaste: Bool { FileClipboard.shared.hasFiles }
@@ -146,11 +149,12 @@ extension WorkspaceState {
 
     func newFolder() {
         let tab = activeTab
+        tab.prepareForNewItem()
         do {
             let folder = try FileOperations.newFolder(in: tab.url)
             FileHistory.shared.record(L("新建文件夹"), steps: [.trash(folder)])
-            tab.reload(selecting: [folder])
             tab.renamingURL = folder
+            tab.reload(selecting: [folder])
         } catch {
             report(error)
         }
@@ -158,11 +162,12 @@ extension WorkspaceState {
 
     func newFile() {
         let tab = activeTab
+        tab.prepareForNewItem()
         do {
             let file = try FileOperations.newFile(in: tab.url)
             FileHistory.shared.record(L("新建文件"), steps: [.trash(file)])
-            tab.reload(selecting: [file])
             tab.renamingURL = file
+            tab.reload(selecting: [file])
         } catch {
             report(error)
         }
@@ -201,11 +206,19 @@ extension WorkspaceState {
     // MARK: Undo
 
     func undo() {
-        FileHistory.shared.undo { [weak self] restored, error in self?.didRestore(restored, error) }
+        let title = FileHistory.shared.undoTitle
+        FileHistory.shared.undo { [weak self] restored, error in
+            self?.didRestore(restored, error)
+            if error == nil, let title { self?.showToast(L("已撤销：\(title)"), symbol: "arrow.uturn.backward") }
+        }
     }
 
     func redo() {
-        FileHistory.shared.redo { [weak self] restored, error in self?.didRestore(restored, error) }
+        let title = FileHistory.shared.redoTitle
+        FileHistory.shared.redo { [weak self] restored, error in
+            self?.didRestore(restored, error)
+            if error == nil, let title { self?.showToast(L("已重做：\(title)"), symbol: "arrow.uturn.forward") }
+        }
     }
 
     /// Selects restored items if they are in the active folder (the watcher refreshes the rest).
@@ -220,12 +233,16 @@ extension WorkspaceState {
 
     func copyPath(_ urls: [URL]? = nil) {
         let items = targets(urls)
-        FileOperations.copyPaths(items.isEmpty ? [activeTab.url] : items)
+        let resolved = items.isEmpty ? [activeTab.url] : items
+        FileOperations.copyPaths(resolved)
+        showToast(resolved.count == 1 ? L("已拷贝路径") : L("已拷贝 \(resolved.count) 个路径"), symbol: "link")
     }
 
     func copyPath(_ urls: [URL]? = nil, as style: PathStyle) {
         let items = targets(urls)
-        FileOperations.copy(items.isEmpty ? [activeTab.url] : items, as: style)
+        let resolved = items.isEmpty ? [activeTab.url] : items
+        FileOperations.copy(resolved, as: style)
+        showToast(resolved.count == 1 ? L("已拷贝路径") : L("已拷贝 \(resolved.count) 个路径"), symbol: "link")
     }
 
     /// Opens the selection (or the current folder) in the chosen editor.
@@ -281,6 +298,7 @@ extension WorkspaceState {
         let items = targets(urls)
         guard !items.isEmpty else { return }
         StashShelf.shared.add(items)
+        showToast(L("已加入暂存架（\(items.count) 项）"), symbol: "tray.and.arrow.down")
     }
 
     func selectAll() {
@@ -330,5 +348,48 @@ extension WorkspaceState {
         let items = targets(urls)
         guard !items.isEmpty else { return }
         NSWorkspace.shared.open(items, withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
+    }
+
+    /// Presents an app picker in /Applications and opens `urls` with the chosen app.
+    func chooseAppAndOpen(_ urls: [URL]? = nil) {
+        let items = targets(urls)
+        guard !items.isEmpty else { return }
+        let panel = NSOpenPanel()
+        panel.title = L("选择应用程序")
+        panel.directoryURL = URL(fileURLWithPath: "/Applications", isDirectory: true)
+        panel.allowedContentTypes = [.applicationBundle]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        guard panel.runModal() == .OK, let app = panel.url else { return }
+        NSWorkspace.shared.open(items, withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
+    }
+
+    func compress(_ urls: [URL]? = nil) {
+        let items = targets(urls)
+        guard !items.isEmpty else { return }
+        let tab = activeTab
+        let directory = items[0].deletingLastPathComponent()
+        let settings = AppSettings.shared
+        let externalName = (settings.archiverBundleID != ExternalApp.systemArchiverBundleID
+            && ArchiveTools.supportsCompression(bundleID: settings.archiverBundleID)
+            && settings.archiverURL != nil) ? settings.archiverName : nil
+        if let externalName { showToast(L("已交给 \(externalName) 压缩"), symbol: "archivebox.fill") }
+        ArchiveTools.compress(items, in: directory) { [weak self] created, error in
+            self?.report(error)
+            if !created.isEmpty {
+                self?.showToast(L("已压缩为 \(created[0].lastPathComponent)"), symbol: "archivebox.fill")
+                if directory.isSameFile(as: tab.url) { tab.reload(selecting: Set(created)) }
+            }
+        }
+    }
+
+    func extract(_ urls: [URL]? = nil) {
+        let items = targets(urls)
+        guard !items.isEmpty else { return }
+        showToast(L("已交给 \(AppSettings.shared.archiverName) 解压"), symbol: "archivebox")
+        ArchiveTools.extract(items) { [weak self] error in
+            self?.report(error)
+        }
     }
 }

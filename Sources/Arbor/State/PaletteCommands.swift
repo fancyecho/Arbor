@@ -80,8 +80,16 @@ enum PaletteCommands {
             cmd(L("返回"), "chevron.left", "⌘[") { ws.goBack() },
             cmd(L("前进"), "chevron.right", "⌘]") { ws.goForward() },
             cmd(L("上层文件夹"), "arrow.up", "⌘↑") { ws.goUp() },
+            cmd(L("编辑路径"), "pencil.line", "⌘L") { ws.pathEditToken += 1 },
+            cmd(L("自定义右键菜单…"), "contextualmenu.and.cursorarrow") { AppActions.openSettingsTab("menu") },
         ]
+        let archiverName = AppSettings.shared.archiverName
+        let useExternalArchiver = AppSettings.shared.archiverBundleID != ExternalApp.systemArchiverBundleID
+            && ArchiveTools.supportsCompression(bundleID: AppSettings.shared.archiverBundleID)
+            && AppSettings.shared.archiverURL != nil
         items += [
+            cmd(useExternalArchiver ? L("用 \(archiverName) 压缩") : L("压缩为 ZIP"), "archivebox.fill") { ws.compress() },
+            cmd(AppSettings.shared.archiverBundleID == ExternalApp.systemArchiverBundleID ? L("解压") : L("用 \(archiverName) 解压"), "archivebox") { ws.extract() },
             cmd(L("用所选项目新建文件夹"), "folder.badge.plus", "⌃⌘N") { ws.newFolderWithSelection() },
             cmd(L("平铺文件夹"), "square.stack.3d.down.right") { ws.flatten() },
             cmd(L("制作替身"), "arrowshape.turn.up.right") { ws.makeLinks(alias: true) },

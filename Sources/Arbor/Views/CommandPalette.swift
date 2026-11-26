@@ -9,6 +9,8 @@ struct CommandPalette: View {
     @State private var query = ""
     @State private var selected = 0
     @State private var results: [PaletteItem] = []
+    /// Verified non-existent frecency/favorite paths, populated off the main thread when the palette opens.
+    @State private var missingPaths: Set<String> = []
     @FocusState private var focused: Bool
 
     /// Rows are inset 6pt, so their 12pt corners sit concentric inside this one.
@@ -73,9 +75,10 @@ struct CommandPalette: View {
                 .padding(.horizontal, 14)
                 .frame(height: 28)
             }
-            .frame(width: 620)
+            .frame(maxWidth: 620)
             .floatingGlass(in: Self.shape, fallback: .regularMaterial)
             .shadow(color: .black.opacity(0.25), radius: 30, y: 12)
+            .padding(.horizontal, 16)
             .padding(.top, 70)
         }
         .onAppear {
@@ -83,8 +86,10 @@ struct CommandPalette: View {
             // Screenshot aid: ARBOR_PALETTE_QUERY starts the palette with that text.
             if Snapshot.isActive, let text = ProcessInfo.processInfo.environment["ARBOR_PALETTE_QUERY"] { query = text }
             refresh()
+            validateCandidatesAsync()
         }
         .onChange(of: query) { _, _ in refresh() }
+        .onChange(of: missingPaths) { _, _ in refresh() }
     }
 
     private func hint(_ key: String, _ text: String) -> some View {
@@ -124,7 +129,7 @@ struct CommandPalette: View {
                 guard let s = Fuzzy.pathScore(q, path) else { continue }
                 match = s
             }
-            guard FileManager.default.fileExists(atPath: path) else { continue }
+            guard !missingPaths.contains(path) else { continue }
             let url = URL(fileURLWithPath: path)
             items.append(PaletteItem(
                 id: "dir:" + path, kind: .folder, title: Places.displayName(for: url),
@@ -239,6 +244,22 @@ struct CommandPalette: View {
     private func close() {
         workspace.showPalette = false
         workspace.focusToken += 1
+    }
+
+    /// Checks frecency & favorite paths off the main thread once per open so typing never blocks on slow volumes.
+    private func validateCandidatesAsync() {
+        let paths = Array(Set(Frecency.shared.ranked().prefix(400).map(\.path) + SidebarStore.shared.favorites.map(\.path)))
+        guard !paths.isEmpty else { return }
+        DispatchQueue.global(qos: .utility).async {
+            let fm = FileManager.default
+            var missing = Set<String>()
+            for path in paths where !fm.fileExists(atPath: path) {
+                missing.insert(path)
+            }
+            DispatchQueue.main.async {
+                if missing != self.missingPaths { self.missingPaths = missing }
+            }
+        }
     }
 }
 

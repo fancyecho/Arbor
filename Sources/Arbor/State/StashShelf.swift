@@ -62,6 +62,24 @@ final class StashShelf {
         }
     }
 
+    func compressAll(into directory: URL, workspace: WorkspaceState?) {
+        prune()
+        let sources = items
+        guard !sources.isEmpty else { return }
+        let settings = AppSettings.shared
+        let externalName = (settings.archiverBundleID != ExternalApp.systemArchiverBundleID
+            && ArchiveTools.supportsCompression(bundleID: settings.archiverBundleID)
+            && settings.archiverURL != nil) ? settings.archiverName : nil
+        if let externalName { workspace?.showToast(L("已交给 \(externalName) 压缩"), symbol: "archivebox.fill") }
+        ArchiveTools.compress(sources, in: directory) { created, error in
+            workspace?.report(error)
+            if !created.isEmpty {
+                workspace?.showToast(L("已压缩为 \(created[0].lastPathComponent)"), symbol: "archivebox.fill")
+                if let tab = workspace?.activeTab, directory.isSameFile(as: tab.url) { tab.reload(selecting: Set(created)) }
+            }
+        }
+    }
+
     /// Sum of the items' sizes, or nil while some are still being measured.
     var totalSize: Int64? {
         let known = items.compactMap { sizes[$0.path] }
@@ -173,7 +191,13 @@ struct StashShelfView: View {
             }
             footer
         }
-        .background { WorkspaceBackdrop(tint: tint).opacity(0.9) }
+        .background {
+            ZStack {
+                VisualEffectBackground(material: .popover, blending: .behindWindow)
+                tint.opacity(0.03)
+            }
+            .ignoresSafeArea()
+        }
         .overlay {
             if dropTargeted {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -228,10 +252,14 @@ struct StashShelfView: View {
     private var footer: some View {
         VStack(spacing: 8) {
             if !shelf.items.isEmpty {
-                HStack {
+                HStack(spacing: 6) {
                     Text(L("\(shelf.items.count) 个项目"))
-                    Spacer()
+                    Text("·").foregroundStyle(.quaternary)
                     Text(shelf.totalSize.map { L("共 \(Format.bytes($0))") } ?? L("正在计算大小…")).monospacedDigit()
+                    Spacer()
+                    ShelfDragAllHandle(urls: shelf.items)
+                        .frame(width: 72, height: 20)
+                        .help(L("按住拖动可把暂存架里的全部项目一次拖给其他应用或文件夹"))
                 }
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
@@ -244,6 +272,9 @@ struct StashShelfView: View {
                 Button(L("拷贝到此处")) { shelf.transferAll(to: here, move: false, workspace: target) }
                     .buttonStyle(.glassCompact)
                 Spacer(minLength: 4)
+                Button { shelf.compressAll(into: here, workspace: target) } label: { Image(systemName: "archivebox.fill") }
+                    .buttonStyle(.glassCompact)
+                    .help(L("压缩全部项目"))
                 Button { shelf.trashAll(workspace: target) } label: { Image(systemName: "trash") }
                     .buttonStyle(.glassCompact)
                     .help(L("全部移到废纸篓（可撤销）"))
@@ -308,6 +339,79 @@ private struct ShelfRow: View {
             Button(L("打开")) { NSWorkspace.shared.open(url) }
             Divider()
             Button(L("移出暂存架")) { StashShelf.shared.remove(url) }
+        }
+    }
+}
+
+/// AppKit drag handle that initiates a single NSDraggingSession containing every item on the shelf,
+/// so users can drop all collected files at once onto Keka, Finder, Mail, or any Arbor folder.
+private struct ShelfDragAllHandle: NSViewRepresentable {
+    let urls: [URL]
+
+    func makeNSView(context: Context) -> DragAllNSView {
+        let view = DragAllNSView()
+        view.urls = urls
+        return view
+    }
+
+    func updateNSView(_ view: DragAllNSView, context: Context) {
+        view.urls = urls
+    }
+
+    final class DragAllNSView: NSView, NSDraggingSource {
+        var urls: [URL] = []
+        private let label = NSTextField(labelWithString: L("拖出全部"))
+        private let icon = NSImageView()
+        private var startPoint: NSPoint?
+
+        override init(frame: NSRect) {
+            super.init(frame: frame)
+            wantsLayer = true
+            layer?.cornerRadius = 10
+            layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.06).cgColor
+            icon.image = NSImage(systemSymbolName: "line.3.horizontal", accessibilityDescription: nil)?
+                .withSymbolConfiguration(.init(pointSize: 9, weight: .semibold))
+            icon.contentTintColor = .secondaryLabelColor
+            icon.translatesAutoresizingMaskIntoConstraints = false
+            label.font = .systemFont(ofSize: 10.5, weight: .medium)
+            label.textColor = .secondaryLabelColor
+            label.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(icon)
+            addSubview(label)
+            NSLayoutConstraint.activate([
+                icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 7),
+                icon.centerYAnchor.constraint(equalTo: centerYAnchor),
+                label.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 4),
+                label.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -6),
+                label.centerYAnchor.constraint(equalTo: centerYAnchor),
+            ])
+        }
+
+        required init?(coder: NSCoder) { fatalError() }
+
+        override func mouseDown(with event: NSEvent) {
+            startPoint = convert(event.locationInWindow, from: nil)
+        }
+
+        override func mouseDragged(with event: NSEvent) {
+            guard !urls.isEmpty, let start = startPoint else { return }
+            let now = convert(event.locationInWindow, from: nil)
+            guard hypot(now.x - start.x, now.y - start.y) >= 3 else { return }
+            startPoint = nil
+            let items: [NSDraggingItem] = urls.enumerated().map { index, url in
+                let item = NSDraggingItem(pasteboardWriter: url as NSURL)
+                let iconImage = NSWorkspace.shared.icon(forFile: url.path)
+                iconImage.size = NSSize(width: 28, height: 28)
+                let offset = CGFloat(min(index, 4)) * 3
+                let frame = NSRect(x: now.x - 14 + offset, y: now.y - 14 - offset, width: 28, height: 28)
+                item.setDraggingFrame(frame, contents: iconImage)
+                return item
+            }
+            beginDraggingSession(with: items, event: event, source: self)
+        }
+
+        func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+            context == .outsideApplication ? [.copy, .move, .link] : [.copy, .move]
         }
     }
 }

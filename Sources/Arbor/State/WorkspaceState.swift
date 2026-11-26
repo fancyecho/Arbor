@@ -22,6 +22,9 @@ final class WorkspaceState {
     /// Present the batch rename sheet for these files.
     var batchRenameTargets: [URL]?
     var alertMessage: String?
+    /// Brief floating capsule feedback for silent actions (copy path, cut, undo…).
+    var toast: ToastMessage?
+    @ObservationIgnored private var toastDismiss: DispatchWorkItem?
     /// A rename that failed: naming starts again on this item when the alert closes.
     @ObservationIgnored var renameAfterAlert: (tab: TabState, url: URL)?
     /// ⌘K command palette.
@@ -83,6 +86,8 @@ final class WorkspaceState {
     var showConnectServer = false
     /// Bumped to move keyboard focus into the toolbar search field.
     var searchFocusToken = 0
+    /// Bumped to switch the active pane's path bar into editable mode (⌘L).
+    var pathEditToken = 0
     /// Output of a custom command run in "show output" mode.
     var commandOutput: CommandOutput?
     /// Present the "name this workspace" sheet.
@@ -190,6 +195,22 @@ final class WorkspaceState {
         guard let error else { return }
         alertMessage = error.localizedDescription
     }
+
+    func showToast(_ text: String, symbol: String = "checkmark.circle.fill") {
+        toastDismiss?.cancel()
+        toast = ToastMessage(symbol: symbol, text: text)
+        let work = DispatchWorkItem { [weak self] in
+            self?.toast = nil
+        }
+        toastDismiss = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6, execute: work)
+    }
+}
+
+struct ToastMessage: Equatable {
+    let id = UUID()
+    let symbol: String
+    let text: String
 }
 
 enum WorkspaceNameRequest: Identifiable {

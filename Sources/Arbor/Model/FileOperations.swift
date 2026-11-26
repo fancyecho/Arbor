@@ -1,4 +1,5 @@
 import AppKit
+import Observation
 
 enum FileOperationError: LocalizedError {
     case invalidName(String)
@@ -116,25 +117,46 @@ enum FileOperations {
 
 /// Files go on the general pasteboard as file URLs so they interoperate with Finder.
 /// A cut is remembered locally: pasting moves instead of copies, then clears the mark.
+@MainActor @Observable
 final class FileClipboard {
     static let shared = FileClipboard()
 
-    private var cutChangeCount: Int?
+    @ObservationIgnored private var cutChangeCount: Int?
+    /// Standardized paths currently marked for cut, so file views can dim them (ghost state).
+    private(set) var cutPaths: Set<String> = []
 
     func write(_ urls: [URL], cut: Bool) {
         let pb = NSPasteboard.general
         pb.clearContents()
         pb.writeObjects(urls as [NSURL])
         cutChangeCount = cut ? pb.changeCount : nil
+        cutPaths = cut ? Set(urls.map(\.standardizedFileURL.path)) : []
     }
 
     var urls: [URL] {
         NSPasteboard.general.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
     }
 
-    var isCut: Bool { cutChangeCount == NSPasteboard.general.changeCount }
+    var isCut: Bool {
+        guard let cutChangeCount else { return false }
+        return cutChangeCount == NSPasteboard.general.changeCount
+    }
+
+    /// Currently cut paths, automatically empty if another app overwrote the pasteboard.
+    var activeCutPaths: Set<String> { isCut ? cutPaths : [] }
 
     var hasFiles: Bool { !urls.isEmpty }
 
-    func didPasteCut() { cutChangeCount = nil }
+    func didPasteCut() {
+        cutChangeCount = nil
+        cutPaths = []
+    }
+
+    /// Reconciles local cut state with the system pasteboard (e.g. when returning from another app).
+    func syncWithPasteboard() {
+        if cutChangeCount != nil, !isCut {
+            cutChangeCount = nil
+            cutPaths = []
+        }
+    }
 }

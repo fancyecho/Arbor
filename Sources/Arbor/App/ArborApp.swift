@@ -81,6 +81,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    func applicationDidBecomeActive(_ notification: Notification) {
+        MainActor.assumeIsolated { FileClipboard.shared.syncWithPasteboard() }
+    }
+
     @objc private func handleQuit(_ event: NSAppleEventDescriptor, reply: NSAppleEventDescriptor) {
         MainActor.assumeIsolated { AppActions.quit() }
     }
@@ -348,6 +352,9 @@ struct ArborCommands: Commands {
         }
 
         CommandMenu(L("前往")) {
+            Button(L("编辑路径")) { workspace?.pathEditToken += 1 }
+                .shortcut("编辑路径", KeyboardShortcut("l"))
+                .disabled(workspace == nil)
             Button(L("连接服务器…")) { workspace?.showConnectServer = true }
                 .shortcut("连接服务器…", KeyboardShortcut("k", modifiers: [.command, .shift]))
                 .disabled(workspace == nil)

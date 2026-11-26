@@ -5,11 +5,12 @@ import AppKit
 extension WorkspaceState {
     func newFile(from template: URL) {
         let tab = activeTab
+        tab.prepareForNewItem()
         do {
             let file = try Templates.instantiate(template, in: tab.url)
             FileHistory.shared.record(L("新建文件"), steps: [.trash(file)])
-            tab.reload(selecting: [file])
             tab.renamingURL = file
+            tab.reload(selecting: [file])
         } catch {
             report(error)
         }
@@ -25,11 +26,12 @@ extension WorkspaceState {
         let items = selectionOrNil(urls)
         guard !items.isEmpty else { return newFolder() }
         let tab = activeTab
+        tab.prepareForNewItem()
         do {
             let (folder, undo) = try FileTools.newFolder(with: items, in: tab.url)
             FileHistory.shared.record(L("用所选项目新建文件夹"), steps: undo)
-            tab.reload(selecting: [folder])
             tab.renamingURL = folder
+            tab.reload(selecting: [folder])
         } catch {
             report(error)
         }

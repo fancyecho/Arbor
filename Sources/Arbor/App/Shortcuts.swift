@@ -88,6 +88,7 @@ enum ShortcutCatalog {
         ("按条件选择…", KeyboardShortcut("a", modifiers: [.command, .control])),
         ("刷新", KeyboardShortcut("r")),
         ("使用群组", KeyboardShortcut("0", modifiers: [.command, .control])),
+        ("编辑路径", KeyboardShortcut("l")),
         ("连接服务器…", KeyboardShortcut("k", modifiers: [.command, .shift])),
         ("返回", KeyboardShortcut("[")),
         ("前进", KeyboardShortcut("]")),
